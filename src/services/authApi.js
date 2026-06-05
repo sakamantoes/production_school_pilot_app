@@ -29,6 +29,8 @@ export const authAPI = {
   login: async (credentials) => {
     const response = await api.post("auth/login", credentials);
 
+    console.log(response);
+
     // Try to extract a raw JWT from common response shapes
     const token = extractToken(response.data) || extractToken(response.data?.data) || null;
     if (token) {

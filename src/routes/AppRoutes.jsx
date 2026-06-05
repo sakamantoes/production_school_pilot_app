@@ -8,6 +8,13 @@ import Register from "../pages/auth/Register";
 import Login from "../pages/auth/Login";
 import AuthLayout from "../layouts/AuthLayout";
 import ProtectedRoute from "../routes/ProtectedRoute";
+import DashboardLayout from "../layouts/DashboardLayout";
+
+/* Dashboards for all roles */
+import SuperAdminDashboard from "../dashboards/super-admin/SuperAdminDashboard";
+import SchoolAdminDashboard from "../dashboards/school-admin/SchoolAdminDashboard";
+import TeacherDashboard from "../dashboards/teacher/TeacherDashboard";
+import StudentDashboard from "../dashboards/student/StudentDashboard";
 
 const AppRoutes = () => {
   return (
@@ -21,10 +28,28 @@ const AppRoutes = () => {
         <Route path="/login" element={<Login />} />
       </Route>
       
-      {/* Protected Routes - Add when you have dashboard/waitlist */}
-      <Route element={<ProtectedRoute />}>
-        <Route path="/waitlist" element={<div>Waitlist Page</div>} />
-      </Route>
+      {/* Protected Dashboard Routes */}
+     <Route element={<ProtectedRoute />}>
+  <Route path="/super-admin" element={<DashboardLayout />}>
+    <Route index element={<SuperAdminDashboard />} />
+    <Route path="dashboard" element={<SuperAdminDashboard />} />
+  </Route>
+
+  <Route path="/school-admin" element={<DashboardLayout />}>
+    <Route index element={<SchoolAdminDashboard />} />
+    <Route path="dashboard" element={<SchoolAdminDashboard />} />
+  </Route>
+
+  <Route path="/teacher" element={<DashboardLayout />}>
+    <Route index element={<TeacherDashboard />} />
+    <Route path="dashboard" element={<TeacherDashboard />} />
+  </Route>
+
+  <Route path="/student" element={<DashboardLayout />}>
+    <Route index element={<StudentDashboard />} />
+    <Route path="dashboard" element={<StudentDashboard />} />
+  </Route>
+</Route>
 
       {/* 404 PAGE */}
       <Route path="*" element={<NotFound />} />

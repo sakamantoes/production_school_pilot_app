@@ -4,7 +4,7 @@ import { Outlet, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const AuthLayout = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user, getRoleDashboardPath } = useAuth();
 
   // Show loading state while checking authentication
   if (loading) {
@@ -15,9 +15,10 @@ const AuthLayout = () => {
     );
   }
 
-  // Redirect to waitlist if already authenticated
-  if (isAuthenticated) {
-    return <Navigate to="/waitlist" replace />;
+  // If authenticated, redirect to role-specific dashboard
+  if (isAuthenticated && user) {
+    const dashboardPath = getRoleDashboardPath(user.role);
+    return <Navigate to={dashboardPath} replace />;
   }
 
   const floatVariants = {
@@ -94,7 +95,7 @@ const AuthLayout = () => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.5 }}
-        className="relative z-10 w-full min-h-screen flex flex-col "
+        className="relative z-10 w-full min-h-screen flex flex-col"
       >
         {/* Optional: Add a subtle gradient overlay */}
         <div className="absolute inset-0 bg-white pointer-events-none">

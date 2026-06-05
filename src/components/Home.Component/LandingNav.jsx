@@ -1,11 +1,15 @@
+// components/Home.Component/LandingNav.jsx
 import React, { useState, useEffect } from "react";
 import Image from "../../assets/image";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "../../context/AuthContext";
 
 const LandingNav = () => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isAuthenticated, user, logout, getRoleDashboardPath } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -15,7 +19,19 @@ const LandingNav = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Animation variants
+  const handleDashboardClick = () => {
+    if (user) {
+      const dashboardPath = getRoleDashboardPath(user.role);
+      navigate(dashboardPath);
+    }
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
+  // Animation variants (keep your existing variants)
   const navVariants = {
     initial: { y: -100, opacity: 0 },
     animate: {
@@ -29,14 +45,14 @@ const LandingNav = () => {
       },
     },
     scrolled: {
-      background: "rgba(255, 255, 255)", // transparent glass color
+      background: "rgba(255, 255, 255)",
       backdropFilter: "blur(12px)",
-      WebkitBackdropFilter: "blur(12px)", // for Safari
-      border: "1px solid rgba(255, 255, 255)", // subtle glass edge
+      WebkitBackdropFilter: "blur(12px)",
+      border: "1px solid rgba(255, 255, 255)",
       boxShadow: "0 8px 32px rgba(0, 0, 0, 0.1)",
-      borderRadius: "12px", // smooth edges (optional)
+      borderRadius: "12px",
       transition: "all 0.3s ease",
-      color: "rgba(255, 255, 255, 0.95)", // vibrant text color
+      color: "rgba(255, 255, 255, 0.95)",
     },
     default: {
       backgroundColor: "rgba(255, 255, 255, 0.95)",
@@ -86,7 +102,7 @@ const LandingNav = () => {
         damping: 15,
       },
     }),
-    hover: (custom) => ({
+    hover: () => ({
       scale: 1.05,
       boxShadow: "0px 5px 15px rgba(33, 4, 255, 0.3)",
       transition: { type: "spring", stiffness: 400, damping: 10 },
@@ -209,36 +225,65 @@ const LandingNav = () => {
             </ul>
           </div>
 
-          {/* Desktop Auth Section */}
+          {/* Desktop Auth Section - Conditional Rendering */}
           <div className="hidden md:flex items-center gap-4">
-            <Link to="/login">
-              {" "}
-              <motion.button
-                custom={0}
-                variants={buttonVariants}
-                initial="hidden"
-                animate="visible"
-                whileHover="hover"
-                whileTap="tap"
-                className="Base text-white px-6 py-2.5 rounded-full hover:bg-blue-600 transition-all duration-300 Text shadow-lg"
-              >
-                Login
-              </motion.button>
-            </Link>
-
-            <Link to="/register">
-              <motion.button
-                custom={1}
-                variants={buttonVariants}
-                initial="hidden"
-                animate="visible"
-                whileHover="hover"
-                whileTap="tap"
-                className="border-2 border-[#214f77] text-[#214f77] px-6 py-2.5 rounded-full hover:bg-[#214f77] hover:text-white transition-all duration-300 Teat"
-              >
-                Register
-              </motion.button>
-            </Link>
+            {isAuthenticated ? (
+              <>
+                <motion.button
+                  custom={0}
+                  variants={buttonVariants}
+                  initial="hidden"
+                  animate="visible"
+                  whileHover="hover"
+                  whileTap="tap"
+                  onClick={handleDashboardClick}
+                  className="Base text-white px-6 py-2.5 rounded-full hover:bg-blue-600 transition-all duration-300 Text shadow-lg"
+                >
+                  Dashboard
+                </motion.button>
+                <motion.button
+                  custom={1}
+                  variants={buttonVariants}
+                  initial="hidden"
+                  animate="visible"
+                  whileHover="hover"
+                  whileTap="tap"
+                  onClick={handleLogout}
+                  className="border-2 border-red-500 text-red-500 px-6 py-2.5 rounded-full hover:bg-red-500 hover:text-white transition-all duration-300"
+                >
+                  Logout
+                </motion.button>
+              </>
+            ) : (
+              <>
+                <Link to="/login">
+                  <motion.button
+                    custom={0}
+                    variants={buttonVariants}
+                    initial="hidden"
+                    animate="visible"
+                    whileHover="hover"
+                    whileTap="tap"
+                    className="Base text-white px-6 py-2.5 rounded-full hover:bg-blue-600 transition-all duration-300 Text shadow-lg"
+                  >
+                    Login
+                  </motion.button>
+                </Link>
+                <Link to="/register">
+                  <motion.button
+                    custom={1}
+                    variants={buttonVariants}
+                    initial="hidden"
+                    animate="visible"
+                    whileHover="hover"
+                    whileTap="tap"
+                    className="border-2 border-[#214f77] text-[#214f77] px-6 py-2.5 rounded-full hover:bg-[#214f77] hover:text-white transition-all duration-300"
+                  >
+                    Register
+                  </motion.button>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -294,7 +339,7 @@ const LandingNav = () => {
             >
               <div className="flex flex-col h-full pt-20 px-6">
                 <div className="flex flex-col gap-6 mb-8">
-                  {["hero", "about", "why-us", "contact"].map((item) => (
+                  {["hero", "about", "why-us", "CTASection"].map((item) => (
                     <motion.a
                       key={item}
                       variants={mobileItemVariants}
@@ -304,7 +349,7 @@ const LandingNav = () => {
                         e.preventDefault();
                         scrollToSection(item);
                       }}
-                      className="text-gray-700 hover:text-[##214f77] text-lg font-medium py-2 border-b border-gray-100 transition-colors"
+                      className="text-gray-700 hover:text-[#214f77] text-lg font-medium py-2 border-b border-gray-100 transition-colors"
                     >
                       {item === "why-us"
                         ? "Why Us"
@@ -316,27 +361,47 @@ const LandingNav = () => {
                   variants={mobileItemVariants}
                   className="flex flex-col gap-3 mt-auto mb-8"
                 >
-                  <Link to="/login">
-                    {" "}
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      className="bg-[hsl(219.2deg_80.73%_42.75%)] text-white px-6 py-3 rounded-full font-semibold w-full"
-                    >
-                      Login
-                    </motion.button>
-                  </Link>
-
-                  <Link to="/register">
-                    {" "}
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                      className="border-2 border-[hsl(219.2deg_80.73%_42.75%)] text-[hsl(219.2deg_80.73%_42.75%)] px-6 py-3 rounded-full font-semibold w-full"
-                    >
-                      Register
-                    </motion.button>
-                  </Link>
+                  {isAuthenticated ? (
+                    <>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleDashboardClick}
+                        className="bg-[hsl(219.2deg_80.73%_42.75%)] text-white px-6 py-3 rounded-full font-semibold w-full"
+                      >
+                        Dashboard
+                      </motion.button>
+                      <motion.button
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleLogout}
+                        className="border-2 border-red-500 text-red-500 px-6 py-3 rounded-full font-semibold w-full"
+                      >
+                        Logout
+                      </motion.button>
+                    </>
+                  ) : (
+                    <>
+                      <Link to="/login">
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="bg-[hsl(219.2deg_80.73%_42.75%)] text-white px-6 py-3 rounded-full font-semibold w-full"
+                        >
+                          Login
+                        </motion.button>
+                      </Link>
+                      <Link to="/register">
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          className="border-2 border-[hsl(219.2deg_80.73%_42.75%)] text-[hsl(219.2deg_80.73%_42.75%)] px-6 py-3 rounded-full font-semibold w-full"
+                        >
+                          Register
+                        </motion.button>
+                      </Link>
+                    </>
+                  )}
                 </motion.div>
               </div>
             </motion.div>
