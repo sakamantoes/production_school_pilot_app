@@ -81,7 +81,7 @@ const getRoleBadgeColor = (role) => {
 const getMenuItems = (role, dashboardPath) => {
   const base = [
     { text: "Dashboard",      icon: LayoutDashboard, path: dashboardPath },
-    { text: "Notifications",  icon: Bell,            path: "/notifications" },
+    // { text: "Notifications",  icon: Bell,            path: "/notifications" },
   ];
 
   if (role === "super_admin") return [
@@ -100,18 +100,14 @@ const getMenuItems = (role, dashboardPath) => {
   if (role === "school_admin") return [
     ...base,
     { text: "My Profile",           icon: User,          path: "/school-admin/profile",            group: "Account" },
-    { text: "Student Management",   icon: Users,         path: "/school-admin/students",           group: "People" },
-    { text: "Create Student",       icon: UserPlus,      path: "/school-admin/create-student",     group: "People" },
-    { text: "Teacher Management",   icon: UserPlus,      path: "/school-admin/teachers",           group: "People" },
-    { text: "Create Teacher",       icon: UserPlus,      path: "/school-admin/create-teacher",     group: "People" },
-    { text: "Class Management",     icon: GraduationCap, path: "/school-admin/classes",            group: "Academics" },
+    { text: "Student Management",       icon: UserPlus,      path: "/school-admin/student-management",     group: "People" },
+    { text: "Teacher Management",   icon: UserPlus,      path: "/school-admin/teachers-management",           group: "People" },
+    { text: "Academic Management",     icon: GraduationCap, path: "/school-admin/academic-management",            group: "Academics" },
     { text: "Subject Management",   icon: BookOpen,      path: "/school-admin/subjects",           group: "Academics" },
     { text: "Timetable",            icon: Clock,         path: "/school-admin/timetable",          group: "Academics" },
     { text: "Attendance",           icon: ClipboardCheck,path: "/school-admin/attendance",         group: "Academics" },
-    { text: "Session Management",   icon: ControlPoint,  path: "/school-admin/sessions-terms",     group: "Academics" },
     { text: "Result Approval",      icon: FileCheck,     path: "/school-admin/result-approval",    group: "Academics" },
     { text: "Bulk Student Upload",  icon: Upload,        path: "/school-admin/bulk-upload",        group: "Academics" },
-    { text: "Academics",            icon: PlusCircle,    path: "/school-admin/academics",          group: "Academics" },
     { text: "Fee Management",       icon: CreditCard,    path: "/school-admin/fees",               group: "Finance" },
     { text: "Subscription Plan",    icon: MoneyOff,      path: "/school-admin/subscriptions",      group: "Finance" },
     { text: "Results",              icon: FileText,      path: "/school-admin/results",            group: "Reports" },
