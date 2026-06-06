@@ -15,6 +15,7 @@ import SuperAdminDashboard from "../dashboards/super-admin/SuperAdminDashboard";
 import SchoolAdminDashboard from "../dashboards/school-admin/SchoolAdminDashboard";
 import TeacherDashboard from "../dashboards/teacher/TeacherDashboard";
 import StudentDashboard from "../dashboards/student/StudentDashboard";
+import SchoolAdminProfile from "../dashboards/school-admin/SchoolAdminProfile";
 
 const AppRoutes = () => {
   return (
@@ -33,11 +34,13 @@ const AppRoutes = () => {
   <Route path="/super-admin" element={<DashboardLayout />}>
     <Route index element={<SuperAdminDashboard />} />
     <Route path="dashboard" element={<SuperAdminDashboard />} />
+   
   </Route>
 
   <Route path="/school-admin" element={<DashboardLayout />}>
     <Route index element={<SchoolAdminDashboard />} />
     <Route path="dashboard" element={<SchoolAdminDashboard />} />
+     <Route path="profile" element={<SchoolAdminProfile />} />
   </Route>
 
   <Route path="/teacher" element={<DashboardLayout />}>

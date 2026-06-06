@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import Navbar from "../components/Navbar";
 import { Toaster } from "react-hot-toast";
@@ -18,7 +18,6 @@ import {
   Bell,
   BookOpen,
   CreditCard,
-  Home,
   Shield,
   UserPlus,
   GraduationCap,
@@ -27,495 +26,442 @@ import {
   Clock,
   Building,
   Mail,
-  Phone,
-  MapPin,
   Award,
   TrendingUp,
-  Package,
-  Layers,
-  HelpCircle,
   FileCheck,
   Upload,
   PlusCircle,
   Activity,
   Database,
-  AlertCircle,
+  Menu,
+  X,
 } from "lucide-react";
 import { Announcement, ControlPoint, MoneyOff } from "@mui/icons-material";
 import FloatingChatbot from "../components/FloatingChatbot";
+import { motion, AnimatePresence } from "framer-motion";
+
+// ─────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────
+
+const getRoleDashboardPath = (role) => {
+  switch (role?.toLowerCase()) {
+    case "super_admin":    return "/super-admin/dashboard";
+    case "school_admin":   return "/school-admin/dashboard";
+    case "teacher":        return "/teacher/dashboard";
+    case "student":        return "/student/dashboard";
+    default:               return "/";
+  }
+};
+
+const getRoleDisplayName = (role) => {
+  const map = {
+    super_admin:  "Super Administrator",
+    school_admin: "School Administrator",
+    teacher:      "Teacher",
+    student:      "Student",
+  };
+  return map[role?.toLowerCase()] || role || "User";
+};
+
+const getRoleBadgeColor = (role) => {
+  const map = {
+    super_admin:  "bg-violet-500/15 text-violet-400 ring-1 ring-violet-500/30",
+    school_admin: "bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30",
+    teacher:      "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30",
+    student:      "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30",
+  };
+  return map[role?.toLowerCase()] || "bg-slate-500/15 text-slate-400";
+};
+
+// ─────────────────────────────────────────────────────────────
+// Menu definitions — defined outside component (stable refs)
+// ─────────────────────────────────────────────────────────────
+
+const getMenuItems = (role, dashboardPath) => {
+  const base = [
+    { text: "Dashboard",      icon: LayoutDashboard, path: dashboardPath },
+    { text: "Notifications",  icon: Bell,            path: "/notifications" },
+  ];
+
+  if (role === "super_admin") return [
+    ...base,
+    { text: "Overview",          icon: Activity,   path: "/super-admin/dashboard",        group: "Management" },
+    { text: "School Management", icon: Building,   path: "/super-admin/schools",           group: "Management" },
+    { text: "Create School",     icon: PlusCircle, path: "/super-admin/create-school",     group: "Management" },
+    { text: "Activate Accounts", icon: Shield,     path: "/super-admin/activate-accounts", group: "Management" },
+    { text: "User Management",   icon: Users,      path: "/super-admin/users",             group: "Management" },
+    { text: "System Settings",   icon: Settings,   path: "/super-admin/settings",          group: "System" },
+    { text: "Audit Logs",        icon: History,    path: "/super-admin/audit-logs",        group: "System" },
+    { text: "Reports",           icon: BarChart3,  path: "/super-admin/reports",           group: "System" },
+    { text: "Database Backup",   icon: Database,   path: "/super-admin/backup",            group: "System" },
+  ];
+
+  if (role === "school_admin") return [
+    ...base,
+    { text: "My Profile",           icon: User,          path: "/school-admin/profile",            group: "Account" },
+    { text: "Student Management",   icon: Users,         path: "/school-admin/students",           group: "People" },
+    { text: "Create Student",       icon: UserPlus,      path: "/school-admin/create-student",     group: "People" },
+    { text: "Teacher Management",   icon: UserPlus,      path: "/school-admin/teachers",           group: "People" },
+    { text: "Create Teacher",       icon: UserPlus,      path: "/school-admin/create-teacher",     group: "People" },
+    { text: "Class Management",     icon: GraduationCap, path: "/school-admin/classes",            group: "Academics" },
+    { text: "Subject Management",   icon: BookOpen,      path: "/school-admin/subjects",           group: "Academics" },
+    { text: "Timetable",            icon: Clock,         path: "/school-admin/timetable",          group: "Academics" },
+    { text: "Attendance",           icon: ClipboardCheck,path: "/school-admin/attendance",         group: "Academics" },
+    { text: "Session Management",   icon: ControlPoint,  path: "/school-admin/sessions-terms",     group: "Academics" },
+    { text: "Result Approval",      icon: FileCheck,     path: "/school-admin/result-approval",    group: "Academics" },
+    { text: "Bulk Student Upload",  icon: Upload,        path: "/school-admin/bulk-upload",        group: "Academics" },
+    { text: "Academics",            icon: PlusCircle,    path: "/school-admin/academics",          group: "Academics" },
+    { text: "Fee Management",       icon: CreditCard,    path: "/school-admin/fees",               group: "Finance" },
+    { text: "Subscription Plan",    icon: MoneyOff,      path: "/school-admin/subscriptions",      group: "Finance" },
+    { text: "Results",              icon: FileText,      path: "/school-admin/results",            group: "Reports" },
+    { text: "Reports",              icon: BarChart3,     path: "/school-admin/reports",            group: "Reports" },
+    { text: "Announcements",        icon: Announcement,  path: "/school-admin/announcements",      group: "Comms" },
+    { text: "Create Notification",  icon: Mail,          path: "/school-admin/create-notification",group: "Comms" },
+  ];
+
+  if (role === "teacher") return [
+    ...base,
+    { text: "Overview",       icon: Activity,      path: "/teacher/dashboard",      group: "Overview" },
+    { text: "My Classes",     icon: School,        path: "/teacher/classes",        group: "Teaching" },
+    { text: "My Subjects",    icon: BookOpen,      path: "/teacher/subjects",       group: "Teaching" },
+    { text: "Mark Attendance",icon: ClipboardCheck,path: "/teacher/attendance",     group: "Teaching" },
+    { text: "Enter Scores",   icon: FileText,      path: "/teacher/enter-scores",   group: "Teaching" },
+    { text: "Timetable",      icon: Clock,         path: "/teacher/timetable",      group: "Teaching" },
+    { text: "Students",       icon: Users,         path: "/teacher/students",       group: "Teaching" },
+    { text: "Submit Results", icon: Award,         path: "/teacher/submit-results", group: "Teaching" },
+    { text: "Lesson Notes",   icon: FileText,      path: "/teacher/lesson-notes",   group: "Teaching" },
+    { text: "Announcements",  icon: Announcement,  path: "/teacher/announcements",  group: "Comms" },
+  ];
+
+  if (role === "student") return [
+    ...base,
+    { text: "Overview",          icon: Activity,      path: "/student/dashboard",   group: "Overview" },
+    { text: "My Results",        icon: Award,         path: "/student/results",     group: "Academics" },
+    { text: "My Profile",        icon: User,          path: "/student/profile",     group: "Academics" },
+    { text: "Timetable",         icon: Clock,         path: "/student/timetable",   group: "Academics" },
+    { text: "Attendance Record", icon: TrendingUp,    path: "/student/attendance",  group: "Academics" },
+    { text: "Fee Statement",     icon: CreditCard,    path: "/student/studentFees", group: "Finance" },
+    { text: "Assignments",       icon: FileText,      path: "/student/assignments", group: "Academics" },
+    { text: "Announcements",     icon: Announcement,  path: "/student/announcements",group: "Comms" },
+    { text: "Class Schedule",    icon: Calendar,      path: "/student/schedule",    group: "Academics" },
+  ];
+
+  return base;
+};
+
+// ─────────────────────────────────────────────────────────────
+// NavItem — stable component outside parent
+// ─────────────────────────────────────────────────────────────
+
+const NavItem = ({ item, isActive, collapsed, onClick }) => (
+  <button
+    onClick={onClick}
+    title={collapsed ? item.text : undefined}
+    className={`
+      w-full flex items-center gap-3 rounded-xl text-sm font-medium
+      transition-all duration-200 group relative
+      ${collapsed ? "justify-center p-3" : "px-3 py-2.5"}
+      ${isActive
+        ? "bg-white/10 text-white shadow-sm"
+        : "text-slate-400 hover:text-white hover:bg-white/6"
+      }
+    `}
+  >
+    {isActive && (
+      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-blue-400 rounded-r-full" />
+    )}
+    <item.icon className={`flex-shrink-0 transition-all ${collapsed ? "w-5 h-5" : "w-4 h-4"} ${isActive ? "text-blue-400" : ""}`} />
+    {!collapsed && <span className="truncate">{item.text}</span>}
+
+    {/* Tooltip */}
+    {collapsed && (
+      <span className="pointer-events-none absolute left-full ml-3 px-2.5 py-1.5 bg-slate-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-xl z-50 border border-slate-700">
+        {item.text}
+      </span>
+    )}
+  </button>
+);
+
+// ─────────────────────────────────────────────────────────────
+// SidebarContent — extracted so it renders identically on
+// mobile drawer and desktop static sidebar
+// ─────────────────────────────────────────────────────────────
+
+const SidebarContent = ({
+  collapsed, setCollapsed, menuItems, location, navigate,
+  userFullName, userImage, role, schoolName, logout, setSidebarOpen,
+}) => {
+  // Group menu items
+  const grouped = menuItems.reduce((acc, item) => {
+    const g = item.group || "General";
+    if (!acc[g]) acc[g] = [];
+    acc[g].push(item);
+    return acc;
+  }, {});
+
+  const handleNav = useCallback((path) => {
+    navigate(path);
+    setSidebarOpen(false);
+  }, [navigate, setSidebarOpen]);
+
+  return (
+    <div className="flex flex-col h-full bg-[#0f1623] text-white">
+
+      {/* Brand */}
+      <div className={`flex items-center border-b border-white/8 flex-shrink-0 ${collapsed ? "justify-center p-4" : "gap-3 px-5 py-4"}`}>
+        <div className="relative flex-shrink-0">
+          <div className="w-9 h-9 rounded-xl overflow-hidden ring-2 ring-blue-500/40 shadow-lg">
+            <img src="/logo.jpg" alt="SchoolPilot" className="w-full h-full object-cover" />
+          </div>
+          <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#0f1623]" />
+        </div>
+        {!collapsed && (
+          <div className="flex-1 min-w-0">
+            <p className="font-bold text-white text-base leading-tight tracking-tight">SchoolPilot</p>
+            <p className="text-xs text-slate-500 truncate mt-0.5">Education Platform</p>
+          </div>
+        )}
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          className="hidden lg:flex ml-auto items-center justify-center w-7 h-7 rounded-lg text-slate-500 hover:text-white hover:bg-white/8 transition-all flex-shrink-0"
+        >
+          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
+      </div>
+
+      {/* User card */}
+      <div className={`border-b border-white/8 flex-shrink-0 ${collapsed ? "py-4 px-2 flex justify-center" : "px-4 py-4"}`}>
+        <div className={`flex items-center ${collapsed ? "" : "gap-3"}`}>
+          <div className="relative flex-shrink-0">
+            <div className={`rounded-full overflow-hidden ring-2 ring-white/10 ${collapsed ? "w-10 h-10" : "w-10 h-10"}`}>
+              {userImage
+                ? <img src={userImage} alt="Profile" className="w-full h-full object-cover" />
+                : (
+                  <div className="w-full h-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center">
+                    <span className="text-sm font-bold text-white">
+                      {userFullName?.[0]?.toUpperCase() || "U"}
+                    </span>
+                  </div>
+                )
+              }
+            </div>
+            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#0f1623]" />
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white truncate">{userFullName}</p>
+              <span className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${getRoleBadgeColor(role)}`}>
+                {getRoleDisplayName(role)}
+              </span>
+              {schoolName && schoolName !== "Education Management" && (
+                <p className="text-xs text-slate-500 truncate mt-1">{schoolName}</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-4 scrollbar-thin scrollbar-thumb-white/10">
+        {Object.entries(grouped).map(([group, items]) => (
+          <div key={group}>
+            {!collapsed && (
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-600 px-3 mb-1.5">
+                {group}
+              </p>
+            )}
+            <div className="space-y-0.5">
+              {items.map((item) => (
+                <NavItem
+                  key={item.text}
+                  item={item}
+                  isActive={location.pathname === item.path}
+                  collapsed={collapsed}
+                  onClick={() => handleNav(item.path)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      {/* Footer */}
+      <div className={`border-t border-white/8 p-2 space-y-0.5 flex-shrink-0`}>
+        <button
+          onClick={() => handleNav("/change-password")}
+          className={`w-full flex items-center gap-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-white/6 transition-all
+            ${collapsed ? "justify-center p-3" : "px-3 py-2.5"}`}
+          title={collapsed ? "Settings" : undefined}
+        >
+          <Settings className="w-4 h-4 flex-shrink-0" />
+          {!collapsed && <span>Change Password</span>}
+        </button>
+
+        <button
+          onClick={logout}
+          className={`w-full flex items-center gap-3 rounded-xl text-sm font-medium text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all
+            ${collapsed ? "justify-center p-3" : "px-3 py-2.5"}`}
+          title={collapsed ? "Logout" : undefined}
+        >
+          <LogOut className="w-4 h-4 flex-shrink-0" />
+          {!collapsed && <span>Sign Out</span>}
+        </button>
+
+        {!collapsed && (
+          <p className="text-[10px] text-slate-700 text-center pt-3 pb-1">
+            SchoolPilot v2.0 · © 2024
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+// Main layout
+// ─────────────────────────────────────────────────────────────
 
 const DashboardLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
-  const navigate = useNavigate();
-  const location = useLocation();
+
+  const navigate  = useNavigate();
+  const location  = useLocation();
   const { user, logout } = useAuth();
 
-  // Redirect to role-specific dashboard on mount if at root
+  const getSchoolName = () => {
+    if (!user) return "";
+    return user.school?.schoolName || user.schoolName || user.school_name || "Education Management";
+  };
+
+  const getUserFullName = () => {
+    if (!user) return "User";
+    if (user.firstName && user.lastName) return `${user.firstName} ${user.lastName}`;
+    if (user.first_name && user.last_name) return `${user.first_name} ${user.last_name}`;
+    return user.name || user.username || "User";
+  };
+
+  const getUserImage = () => user?.image || user?.profile_image || user?.avatar || null;
+
   useEffect(() => {
     if (user && (location.pathname === "/" || location.pathname === "/dashboard")) {
-      const roleDashboard = getRoleDashboardPath(user.role);
-      if (roleDashboard !== "/") {
-        navigate(roleDashboard, { replace: true });
-      }
+      const path = getRoleDashboardPath(user.role);
+      if (path !== "/") navigate(path, { replace: true });
     }
   }, [user, location.pathname, navigate]);
 
-  const getRoleDashboardPath = (role) => {
-    switch (role?.toLowerCase()) {
-      case "super_admin":
-        return "/super-admin/dashboard";
-      case "school_admin":
-        return "/school-admin/dashboard";
-      case "teacher":
-        return "/teacher/dashboard";
-      case "student":
-        return "/student/dashboard";
-      default:
-        return "/";
-    }
-  };
+  if (!user) return null;
 
-  const getRoleDisplayName = (role) => {
-    const roleNames = {
-      super_admin: "Super Administrator",
-      school_admin: "School Administrator",
-      teacher: "Teacher",
-      student: "Student",
-    };
-    return roleNames[role?.toLowerCase()] || role || "User";
-  };
-
-  const getMenuItems = () => {
-    if (!user) return [];
-
-    const role = user.role?.toLowerCase();
-    
-    // Common items for all roles
-    const baseItems = [
-      { text: "Dashboard", icon: LayoutDashboard, path: getRoleDashboardPath(role) },
-      { text: "Notifications", icon: Bell, path: "/notifications" },
-      { text: "Profile", icon: User, path: "/profile" },
-    ];
-
-    // SUPER_ADMIN Menu
-    if (role === "super_admin") {
-      return [
-        ...baseItems,
-        { text: "Overview", icon: Activity, path: "/super-admin/dashboard" },
-        { text: "School Management", icon: Building, path: "/super-admin/schools" },
-        { text: "Create School", icon: PlusCircle, path: "/super-admin/create-school" },
-        { text: "Activate Accounts", icon: Shield, path: "/super-admin/activate-accounts" },
-        { text: "User Management", icon: Users, path: "/super-admin/users" },
-        { text: "System Settings", icon: Settings, path: "/super-admin/settings" },
-        { text: "Audit Logs", icon: History, path: "/super-admin/audit-logs" },
-        { text: "Reports", icon: BarChart3, path: "/super-admin/reports" },
-        { text: "Database Backup", icon: Database, path: "/super-admin/backup" },
-      ];
-    }
-
-    // SCHOOL_ADMIN Menu
-    if (role === "school_admin") {
-      return [
-        ...baseItems,
-        { text: "Overview", icon: Activity, path: "/school-admin/dashboard" },
-        { text: "Student Management", icon: Users, path: "/school-admin/students" },
-        { text: "Create Student", icon: UserPlus, path: "/school-admin/create-student" },
-        { text: "Teacher Management", icon: UserPlus, path: "/school-admin/teachers" },
-        { text: "Create Teacher", icon: UserPlus, path: "/school-admin/create-teacher" },
-        { text: "Class Management", icon: GraduationCap, path: "/school-admin/classes" },
-        { text: "Subject Management", icon: BookOpen, path: "/school-admin/subjects" },
-        { text: "Timetable", icon: Clock, path: "/school-admin/timetable" },
-        { text: "Attendance", icon: ClipboardCheck, path: "/school-admin/attendance" },
-        { text: "Session Management", icon: ControlPoint, path: "/school-admin/sessions-terms" },
-        { text: "Subscription Plan", icon: MoneyOff, path: "/school-admin/subscriptions" },
-        { text: "Create Notification", icon: Mail, path: "/school-admin/create-notification" },
-        { text: "Result Approval", icon: FileCheck, path: "/school-admin/result-approval" },
-        { text: "Bulk Student Upload", icon: Upload, path: "/school-admin/bulk-upload" },
-        { text: "Announcements", icon: Announcement, path: "/school-admin/announcements" },
-        { text: "Academics", icon: PlusCircle, path: "/school-admin/academics" },
-        { text: "Fee Management", icon: CreditCard, path: "/school-admin/fees" },
-        { text: "Reports", icon: BarChart3, path: "/school-admin/reports" },
-        { text: "Results", icon: FileText, path: "/school-admin/results" },
-      ];
-    }
-
-    // TEACHER Menu
-    if (role === "teacher") {
-      return [
-        ...baseItems,
-        { text: "Overview", icon: Activity, path: "/teacher/dashboard" },
-        { text: "My Classes", icon: School, path: "/teacher/classes" },
-        { text: "My Subjects", icon: BookOpen, path: "/teacher/subjects" },
-        { text: "Mark Attendance", icon: ClipboardCheck, path: "/teacher/attendance" },
-        { text: "Enter Scores", icon: FileText, path: "/teacher/enter-scores" },
-        { text: "Timetable", icon: Clock, path: "/teacher/timetable" },
-        { text: "Students", icon: Users, path: "/teacher/students" },
-        { text: "Submit Results", icon: Award, path: "/teacher/submit-results" },
-        { text: "Lesson Notes", icon: FileText, path: "/teacher/lesson-notes" },
-        { text: "Announcements", icon: Announcement, path: "/teacher/announcements" },
-      ];
-    }
-
-    // STUDENT Menu
-    if (role === "student") {
-      return [
-        ...baseItems,
-        { text: "Overview", icon: Activity, path: "/student/dashboard" },
-        { text: "My Results", icon: Award, path: "/student/results" },
-        { text: "My Profile", icon: User, path: "/student/profile" },
-        { text: "Timetable", icon: Clock, path: "/student/timetable" },
-        { text: "Attendance Record", icon: TrendingUp, path: "/student/attendance" },
-        { text: "Fee Statement", icon: CreditCard, path: "/student/studentFees" },
-        { text: "Assignments", icon: FileText, path: "/student/assignments" },
-        { text: "Announcements", icon: Announcement, path: "/student/announcements" },
-        { text: "Class Schedule", icon: Calendar, path: "/student/schedule" },
-      ];
-    }
-
-    return baseItems;
-  };
-
-  const menuItems = getMenuItems();
-
-  // Don't render if no user
-  if (!user) {
-    return null;
-  }
-
-  const role = user.role?.toLowerCase();
+  const role         = user.role?.toLowerCase();
   const dashboardPath = getRoleDashboardPath(role);
+  const schoolName   = getSchoolName();
+  const userFullName = getUserFullName();
+  const userImage    = getUserImage();
+  const menuItems    = getMenuItems(role, dashboardPath);
+
+  const sidebarProps = {
+    collapsed, setCollapsed, menuItems, location, navigate,
+    userFullName, userImage, role, schoolName, logout, setSidebarOpen,
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-primary-50/20">
+    <div className="flex h-screen bg-[#f5f6fa] overflow-hidden">
       <Toaster
         position="top-right"
         toastOptions={{
           duration: 3000,
-          style: {
-            background: "#363636",
-            color: "#fff",
-          },
-          success: {
-            duration: 3000,
-            style: {
-              background: "#10b981",
-            },
-          },
-          error: {
-            duration: 4000,
-            style: {
-              background: "#ef4444",
-            },
-          },
+          className: "!rounded-xl !shadow-xl !text-sm !font-medium",
+          success: { style: { background: "#10b981", color: "#fff" } },
+          error:   { style: { background: "#ef4444", color: "#fff" } },
+          style:   { background: "#1e293b", color: "#f8fafc" },
         }}
       />
 
-      {/* Mobile Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-white/10 backdrop-blur-lg backdrop-saturate-200 backdrop-filter z-30 lg:hidden transition-all duration-300"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      {/* ── Desktop sidebar (static) ── */}
+      <aside
+        className={`hidden lg:flex flex-col flex-shrink-0 transition-all duration-300 ease-in-out
+          ${collapsed ? "w-[72px]" : "w-64"}`}
+      >
+        <SidebarContent {...sidebarProps} />
+      </aside>
 
-      <div className="flex h-screen">
-        {/* Sidebar */}
-        <div
-          className={`
-            fixed lg:static inset-y-0 left-0 z-40
-            transform transition-all duration-300 ease-in-out
-            ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-            ${collapsed ? "w-20" : "w-64"} lg:translate-x-0
-            flex flex-col
-            bg-gradient-to-b from-white via-white to-primary-50/30
-            border-r border-gray-200
-            shadow-xl shadow-primary-100/20
-            backdrop-blur-sm backdrop-filter
-          `}
-        >
-          {/* Logo Section */}
-          <div
-            className={`
-              p-4 border-b border-gray-200
-              bg-gradient-to-r from-primary-600/5 to-primary-500/5
-              transition-all duration-300
-              ${collapsed ? "px-2" : "px-4"}
-            `}
-          >
-            <div
-              className={`
-                flex items-center justify-between
-                ${collapsed ? "justify-center" : ""}
-              `}
+      {/* ── Mobile drawer ── */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              key="backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden"
+              onClick={() => setSidebarOpen(false)}
+            />
+            {/* Drawer */}
+            <motion.aside
+              key="drawer"
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="fixed inset-y-0 left-0 z-50 w-72 lg:hidden flex flex-col shadow-2xl"
             >
-              {!collapsed ? (
-                <div className="flex items-center space-x-3">
-                  <div className="relative">
-                    <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/20">
-                      <img src="/logo.jpg" className="w-8 h-8 rounded-lg" alt="Logo" />
-                    </div>
-                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-br from-green-400 to-green-500 rounded-full border-2 border-white" />
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <h1 className="text-lg font-bold text-gray-900 truncate">
-                      SchoolPilot
-                    </h1>
-                    <p className="text-xs text-primary-600 font-medium truncate">
-                      {user?.school_name || "Education Management"}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="relative">
-                  <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/20">
-                    <img src="/logo.jpg" className="w-8 h-8 rounded-lg" alt="Logo" />
-                  </div>
-                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-gradient-to-br from-green-400 to-green-500 rounded-full border-2 border-white" />
-                </div>
-              )}
-
+              {/* Close button */}
               <button
-                onClick={() => setCollapsed(!collapsed)}
-                className={`
-                  lg:flex items-center justify-center w-8 h-8 rounded-lg
-                  bg-primary-50 text-primary-600 hover:bg-primary-100
-                  hidden transition-all duration-300
-                  ${collapsed ? "rotate-180" : ""}
-                `}
+                onClick={() => setSidebarOpen(false)}
+                className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors"
               >
-                {collapsed ? (
-                  <ChevronRight className="w-4 h-4" />
-                ) : (
-                  <ChevronLeft className="w-4 h-4" />
-                )}
+                <X className="w-4 h-4" />
               </button>
-            </div>
-          </div>
+              <SidebarContent {...sidebarProps} collapsed={false} />
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
 
-          {/* User Info Section */}
-          <div
-            className={`
-              p-4 border-b border-gray-200
-              bg-gradient-to-r from-primary-50/30 to-transparent
-              transition-all duration-300
-              ${collapsed ? "px-2" : "px-4"}
-            `}
+      {/* ── Main content ── */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top bar */}
+        <header className="flex-shrink-0 h-16 bg-white border-b border-slate-200/80 flex items-center gap-4 px-4 md:px-6 shadow-sm">
+          {/* Mobile menu trigger */}
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="lg:hidden flex items-center justify-center w-9 h-9 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors"
           >
-            <div
-              className={`flex items-center ${
-                collapsed ? "justify-center" : "space-x-3"
-              }`}
-            >
-              <div className="relative">
-                <div
-                  className={`
-                    rounded-full bg-gradient-to-br from-primary-100 to-primary-200
-                    border-2 border-white shadow-sm
-                    ${collapsed ? "w-10 h-10" : "w-12 h-12"}
-                    flex items-center justify-center
-                  `}
-                >
-                  {user?.profile_image ? (
-                    <img
-                      src={user.profile_image}
-                      alt="Profile"
-                      className="w-full h-full rounded-full object-cover"
-                    />
-                  ) : (
-                    <User
-                      className={`
-                        text-primary-600
-                        ${collapsed ? "w-5 h-5" : "w-6 h-6"}
-                      `}
-                    />
-                  )}
-                </div>
-                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-gradient-to-br from-green-400 to-green-500 rounded-full border-2 border-white" />
-              </div>
+            <Menu className="w-5 h-5" />
+          </button>
 
-              {!collapsed && (
-                <div className="flex-1 overflow-hidden">
-                  <p className="text-sm font-semibold text-gray-900 truncate">
-                    {user?.first_name} {user?.last_name}
-                  </p>
-                  <p className="text-xs text-primary-600 font-medium truncate">
-                    {getRoleDisplayName(user?.role)}
-                  </p>
-                  {user?.school_name && (
-                    <p className="text-xs text-gray-500 truncate mt-1">
-                      {user.school_name}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
+          {/* Page title area — delegates to Navbar */}
+          <div className="flex-1 min-w-0">
+            <Navbar
+              toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+              title={`Good ${getGreeting()}, ${userFullName.split(" ")[0]}`}
+              subtitle={getRoleDisplayName(user?.role)}
+            />
           </div>
+        </header>
 
-          {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto py-4 px-3">
-            <div className="space-y-1">
-              {menuItems.map((item) => {
-                const isActive = location.pathname === item.path;
-                return (
-                  <button
-                    key={item.text}
-                    onClick={() => {
-                      navigate(item.path);
-                      if (sidebarOpen) setSidebarOpen(false);
-                    }}
-                    className={`
-                      w-full flex items-center rounded-xl
-                      transition-all duration-200
-                      group relative overflow-hidden cursor-pointer
-                      ${
-                        isActive
-                          ? "bg-gradient-to-r from-primary-500 to-primary-600 text-white shadow-md shadow-primary-500/20"
-                          : "text-gray-700 hover:bg-primary-50 hover:text-primary-600"
-                      }
-                      ${
-                        collapsed
-                          ? "justify-center px-2 py-3"
-                          : "px-4 py-2.5 space-x-3"
-                      }
-                    `}
-                  >
-                    {/* Active Indicator */}
-                    {isActive && (
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-primary-600 to-primary-500 rounded-r-full" />
-                    )}
-
-                    <div
-                      className={`
-                        flex items-center justify-center
-                        ${
-                          isActive
-                            ? "text-white"
-                            : "text-gray-500 group-hover:text-primary-600"
-                        }
-                        transition-colors duration-200
-                      `}
-                    >
-                      <item.icon
-                        className={collapsed ? "w-5 h-5" : "w-5 h-5"}
-                      />
-                    </div>
-
-                    {!collapsed && (
-                      <span className="flex-1 text-sm font-medium text-left transition-all duration-200">
-                        {item.text}
-                      </span>
-                    )}
-
-                    {/* Tooltip for collapsed state */}
-                    {collapsed && (
-                      <div
-                        className="
-                          absolute left-full ml-2 px-3 py-2
-                          bg-gradient-to-r from-gray-900 to-gray-800
-                          text-white text-xs rounded-lg
-                          opacity-0 group-hover:opacity-100
-                          transition-opacity duration-200
-                          whitespace-nowrap
-                          shadow-lg
-                          z-50
-                          pointer-events-none
-                        "
-                      >
-                        {item.text}
-                        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 rotate-45" />
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
-
-          {/* Bottom Section */}
-          <div
-            className={`
-              p-4 border-t border-gray-200
-              bg-gradient-to-r from-primary-50/20 to-transparent
-              space-y-2
-              transition-all duration-300
-              ${collapsed ? "px-2" : "px-4"}
-            `}
-          >
-            <div className="space-y-1">
-              <button
-                onClick={() => navigate("/change-password")}
-                className={`
-                  w-full flex items-center rounded-xl
-                  text-gray-700 hover:bg-primary-50 hover:text-primary-600
-                  transition-all duration-200
-                  ${
-                    collapsed
-                      ? "justify-center px-2 py-3"
-                      : "px-4 py-2.5 space-x-3"
-                  }
-                `}
-              >
-                <Settings className={collapsed ? "w-5 h-5" : "w-5 h-5"} />
-                {!collapsed && (
-                  <span className="flex-1 text-sm font-medium text-left">
-                    Change Password
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={logout}
-                className={`
-                  w-full flex items-center rounded-xl
-                  text-red-600 hover:bg-red-50
-                  transition-all duration-200
-                  ${
-                    collapsed
-                      ? "justify-center px-2 py-3"
-                      : "px-4 py-2.5 space-x-3"
-                  }
-                `}
-              >
-                <LogOut className={collapsed ? "w-5 h-5" : "w-5 h-5"} />
-                {!collapsed && (
-                  <span className="flex-1 text-sm font-medium text-left">
-                    Logout
-                  </span>
-                )}
-              </button>
-            </div>
-
-            {/* Version Info */}
-            {!collapsed && (
-              <div className="pt-4">
-                <p className="text-xs text-gray-400 text-center">
-                  SchoolPilot v2.0.0
-                </p>
-                <p className="text-xs text-gray-400 text-center mt-1">
-                  © 2024 All rights reserved
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <Navbar
-            toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-            title={`Welcome back, ${user?.first_name || "User"}!`}
-            subtitle={getRoleDisplayName(user?.role)}
-          />
-
-          <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        {/* Scrollable page content */}
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-4 md:p-6 max-w-[1600px] mx-auto">
             <Outlet />
-            <FloatingChatbot />
-          </main>
-        </div>
+          </div>
+          <FloatingChatbot />
+        </main>
       </div>
     </div>
   );
+};
+
+// Time-aware greeting
+const getGreeting = () => {
+  const h = new Date().getHours();
+  if (h < 12) return "morning";
+  if (h < 17) return "afternoon";
+  return "evening";
 };
 
 export default DashboardLayout;

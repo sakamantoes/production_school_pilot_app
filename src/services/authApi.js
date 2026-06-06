@@ -48,19 +48,40 @@ export const authAPI = {
     return response.data;
   },
 
-  // Admin / user management helpers used across the app
-  getUsers: async (params) => {
-    const response = await api.get("admin/users", { params });
+  // Get user by ID (for viewing other users)
+  getUserById: async (userId) => {
+    const response = await api.get(`auth/user/${userId}`);
     return response.data;
   },
 
-  getUser: async (userId) => {
-    const response = await api.get(`admin/users/${userId}`);
+  // Update user profile
+  updateUserProfile: async (userId, userData) => {
+    const response = await api.put(`auth/user/${userId}`, userData);
     return response.data;
   },
 
-  updateUser: async (userId, payload) => {
-    const response = await api.put(`admin/users/${userId}`, payload);
+  // Change password
+  changePassword: async (passwordData) => {
+    const response = await api.post("auth/user/change-password", passwordData);
+    return response.data;
+  },
+
+  // Delete user account
+  deleteUserAccount: async (userId, password) => {
+    const response = await api.delete(`auth/user/${userId}`, {
+      data: { password } // Send password in the request body for DELETE
+    });
     return response.data;
   },
 };
+
+// Export individual functions for convenience
+export const {
+  register,
+  login,
+  getCurrentUser,
+  getUserById,
+  updateUserProfile,
+  changePassword,
+  deleteUserAccount
+} = authAPI;

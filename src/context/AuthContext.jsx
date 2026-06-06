@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { authAPI } from "../services/authAPI";
+import { authAPI } from "../services/authApi";
 import {
   setAccessToken,
   clearTokens,
@@ -26,29 +26,29 @@ export const AuthProvider = ({ children }) => {
   const navigate = useNavigate();
 
   // Helper function to get role-specific dashboard path
- const getRoleDashboardPath = (role) => {
-  const normalizedRole = role?.toString().toLowerCase().trim();
+  const getRoleDashboardPath = (role) => {
+    const normalizedRole = role?.toString().toLowerCase().trim();
 
-  switch (normalizedRole) {
-    case "super_admin":
-    case "super-admin":
-      return "/super-admin/dashboard";
+    switch (normalizedRole) {
+      case "super_admin":
+      case "super-admin":
+        return "/super-admin/dashboard";
 
-    case "school_admin":
-    case "school-admin":
-      return "/school-admin/dashboard";
+      case "school_admin":
+      case "school-admin":
+        return "/school-admin/dashboard";
 
-    case "teacher":
-      return "/teacher/dashboard";
+      case "teacher":
+        return "/teacher/dashboard";
 
-    case "student":
-      return "/student/dashboard";
+      case "student":
+        return "/student/dashboard";
 
-    default:
-      console.error("Unknown role:", normalizedRole);
-      return "/";
-  }
-};
+      default:
+        console.error("Unknown role:", normalizedRole);
+        return "/";
+    }
+  };
 
   // Load user on initial mount
   useEffect(() => {
@@ -167,7 +167,7 @@ export const AuthProvider = ({ children }) => {
         setIsAuthenticated(true);
 
         toast.success(
-          `Welcome back, ${userData.first_name || userData.username || "User"}!`,
+          `Welcome back, ${userData.firstName || userData.first_name || userData.username || "User"}!`,
         );
 
         // Get role-specific dashboard path
@@ -216,18 +216,86 @@ export const AuthProvider = ({ children }) => {
   // Update user profile
   const updateUser = async (userId, userData) => {
     try {
-      const response = await authAPI.updateUser(userId, userData);
-
-      if (response?.data?.user || response?.user) {
-        const updatedUser = response.data?.user || response.user;
-        setUser((prev) => ({ ...prev, ...updatedUser }));
+      const response = await authAPI.updateUserProfile(userId, userData);
+      
+      let updatedUser = null;
+      
+      // Handle different response structures
+      if (response?.data?.data) {
+        updatedUser = response.data.data;
+      } else if (response?.data) {
+        updatedUser = response.data.user || response.data;
+      } else if (response?.user) {
+        updatedUser = response.user;
+      }
+      
+      if (updatedUser) {
+        // Update user state with new data
+        setUser((prev) => ({ 
+          ...prev, 
+          ...updatedUser,
+          firstName: updatedUser.firstName || updatedUser.first_name || prev?.firstName,
+          lastName: updatedUser.lastName || updatedUser.last_name || prev?.lastName,
+          phone: updatedUser.phone || updatedUser.phoneNumber || prev?.phone,
+          image: updatedUser.image || updatedUser.profileImage || prev?.image,
+        }));
+        toast.success("Profile updated successfully");
+        return true;
+      } else if (Object.keys(userData).length > 0) {
+        // If no response data but we have userData, update local state anyway
+        setUser((prev) => ({ ...prev, ...userData }));
         toast.success("Profile updated successfully");
         return true;
       }
+      
       return false;
     } catch (error) {
       console.error("Update user error:", error);
-      toast.error(error.response?.data?.message || "Failed to update profile");
+      const errorMessage = error.response?.data?.message || error.message || "Failed to update profile";
+      toast.error(errorMessage);
+      return false;
+    }
+  };
+
+  // Change password function
+  const changePassword = async (passwordData) => {
+    try {
+      const response = await authAPI.changePassword(passwordData);
+      
+      if (response?.status === 200 || response?.success === true) {
+        toast.success("Password changed successfully");
+        return true;
+      } else {
+        throw new Error(response?.message || "Password change failed");
+      }
+    } catch (error) {
+      console.error("Change password error:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Failed to change password";
+      toast.error(errorMessage);
+      return false;
+    }
+  };
+
+  // Delete user account
+  const deleteAccount = async (userId, password) => {
+    try {
+      const response = await authAPI.deleteUserAccount(userId, password);
+      
+      if (response?.status === 200 || response?.success === true) {
+        toast.success("Account deleted successfully");
+        // Clear tokens and logout
+        clearTokens();
+        setUser(null);
+        setIsAuthenticated(false);
+        navigate("/login");
+        return true;
+      } else {
+        throw new Error(response?.message || "Account deletion failed");
+      }
+    } catch (error) {
+      console.error("Delete account error:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Failed to delete account";
+      toast.error(errorMessage);
       return false;
     }
   };
@@ -241,6 +309,8 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     updateUser,
+    changePassword,
+    deleteAccount,
     getRoleDashboardPath, // Expose this helper function
   };
 
