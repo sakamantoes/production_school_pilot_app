@@ -60,7 +60,6 @@ const GRADE_COLORS = ["#10b981","#3b82f6","#f59e0b","#ef4444","#8b5cf6","#06b6d4
 const extractArray = (res, ...keys) => {
   if (!res || res.status !== "fulfilled") return [];
   const data = res.value;
-  // Try common response shapes
   const candidates = [
     data,
     data?.data,
@@ -81,10 +80,104 @@ const extractObject = (res) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DATA NORMALISERS — fixed to match real API shape
+//
+// STUDENT API shape (from network tab):
+// {
+//   id, studentId, admissionYear,
+//   user: { firstName, lastName, email, phone, image, isActive },
+//   enrollments: [{ status, class: { name }, arm: { name }, session: { name } }]
+// }
+//
+// TEACHER API shape:
+// {
+//   id, employee_id/staff_id,
+//   user: { firstName, lastName, email, isActive },
+//   subjects: [...], isClassHead, headedClassArm: { name }
+// }
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STUDENT_COLORS = ["#3b82f6","#6366f1","#8b5cf6","#ec4899","#f59e0b","#10b981"];
+const TEACHER_COLORS = ["#10b981","#059669","#0d9488","#0891b2","#0284c7","#2563eb"];
+
+const normaliseStudents = (raw) =>
+  raw.map((s, i) => {
+    // Name and personal info live in s.user, NOT on s directly
+    const u   = s.user || {};
+    // Latest/current enrollment
+    const enr = Array.isArray(s.enrollments) ? s.enrollments[0] : (s.currentEnrollment || null);
+
+    const firstName = u.firstName || u.first_name || "";
+    const lastName  = u.lastName  || u.last_name  || "";
+
+    // Build a readable meta line: "jss 1 — A · 2025-2026"
+    const classPart   = enr?.class?.name  || null;
+    const armPart     = enr?.arm?.name    || null;
+    const sessionPart = enr?.session?.name || null;
+    const classLabel  = classPart
+      ? `${classPart}${armPart ? ` — ${armPart}` : ""}`
+      : "No class assigned";
+    const meta = [classLabel, sessionPart].filter(Boolean).join(" · ");
+
+    return {
+      id:       s.id,
+      name:     firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || u.email || "Unknown",
+      email:    u.email || "—",
+      meta,
+      active:   u.isActive !== false,
+      isGraduated: enr?.status === "GRADUATED",
+      avatarBg: STUDENT_COLORS[i % STUDENT_COLORS.length],
+    };
+  });
+
+const normaliseTeachers = (raw) =>
+  raw.map((t, i) => {
+    // Same pattern — name lives in t.user
+    const u = t.user || {};
+
+    const firstName = u.firstName || u.first_name || "";
+    const lastName  = u.lastName  || u.last_name  || "";
+
+    // Subjects: could be t.subjects[] or t.assignments[].subject
+    const subjects = (t.subjects || [])
+      .slice(0, 2)
+      .map((s) => (typeof s === "string" ? s : s?.name || s?.subject_name || ""))
+      .filter(Boolean);
+
+    // Also try assignments array
+    const fromAssignments = (t.assignments || [])
+      .slice(0, 2)
+      .map((a) => a?.subject?.name || a?.subject || "")
+      .filter(Boolean);
+
+    const subjectList = subjects.length ? subjects : fromAssignments;
+
+    const meta = [
+      subjectList.length ? subjectList.join(", ") : "No subjects assigned",
+      t.isClassHead
+        ? `Class Head${t.headedClassArm?.name ? ` — ${t.headedClassArm.name}` : ""}`
+        : null,
+      t.employee_id || t.staff_id
+        ? `ID: ${t.employee_id || t.staff_id}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    return {
+      id:       t.id || u.id,
+      name:     firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || u.email || "Unknown",
+      email:    u.email || "—",
+      meta,
+      active:   u.isActive !== false,
+      avatarBg: TEACHER_COLORS[i % TEACHER_COLORS.length],
+    };
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
 // OUTSIDE-COMPONENT SUB-COMPONENTS (stable refs — no focus loss)
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Slim top-border stat card matching the slate/white design system */
 const StatCard = ({ title, value, icon: Icon, accent, change, positive, onClick, loading }) => (
   <motion.div
     whileHover={{ y: -2, boxShadow: "0 8px 30px rgba(0,0,0,0.08)" }}
@@ -116,7 +209,6 @@ const StatCard = ({ title, value, icon: Icon, accent, change, positive, onClick,
   </motion.div>
 );
 
-/** Shared card wrapper used by every chart / list section */
 const DashCard = ({ title, subtitle, action, onAction, children, className = "" }) => (
   <div className={`bg-white rounded-2xl border border-slate-100 overflow-hidden ${className}`}>
     <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
@@ -137,7 +229,6 @@ const DashCard = ({ title, subtitle, action, onAction, children, className = "" 
   </div>
 );
 
-/** Custom tooltip that matches the dark design */
 const ChartTooltip = ({ active, payload, label, prefix = "", suffix = "" }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -152,15 +243,12 @@ const ChartTooltip = ({ active, payload, label, prefix = "", suffix = "" }) => {
   );
 };
 
-// ── Attendance Area Chart ──────────────────────────────────────────────────
 const AttendanceChart = ({ data, loading }) => {
   if (loading) return <div className="h-64 flex items-center justify-center"><Loader size="sm" /></div>;
-
   const monthly = data?.monthly_data || data?.monthlyAttendance || [];
   const chartData = monthly.length
     ? monthly.map((v, i) => ({ month: MONTHS[i], attendance: Number(v) || 0 }))
     : MONTHS.map((m) => ({ month: m, attendance: Math.floor(80 + Math.random() * 15) }));
-
   return (
     <ResponsiveContainer width="100%" height={240}>
       <AreaChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
@@ -174,61 +262,37 @@ const AttendanceChart = ({ data, loading }) => {
         <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
         <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
         <Tooltip content={<ChartTooltip suffix="%" />} />
-        <Area
-          type="monotone"
-          dataKey="attendance"
-          name="Attendance"
-          stroke="#3b82f6"
-          strokeWidth={2.5}
-          fill="url(#attGrad)"
-          dot={false}
-          activeDot={{ r: 5, fill: "#3b82f6", strokeWidth: 0 }}
-        />
+        <Area type="monotone" dataKey="attendance" name="Attendance" stroke="#3b82f6"
+          strokeWidth={2.5} fill="url(#attGrad)" dot={false}
+          activeDot={{ r: 5, fill: "#3b82f6", strokeWidth: 0 }} />
       </AreaChart>
     </ResponsiveContainer>
   );
 };
 
-// ── Fees Bar Chart ─────────────────────────────────────────────────────────
 const FeesChart = ({ collected = 0, target = 0, monthlyData = [], loading }) => {
   if (loading) return <div className="h-64 flex items-center justify-center"><Loader size="sm" /></div>;
-
   const pct = target > 0 ? Math.min(Math.round((collected / target) * 100), 100) : 0;
-
   const chartData = monthlyData.length
-    ? monthlyData.map((v, i) => ({
-        month: MONTHS[i],
-        collected: Number(v) || 0,
-        target: Math.round(target / 12),
-      }))
-    : MONTHS.map((m) => ({
-        month: m,
-        collected: Math.floor(200000 + Math.random() * 400000),
-        target: Math.round((target || 5000000) / 12),
-      }));
-
+    ? monthlyData.map((v, i) => ({ month: MONTHS[i], collected: Number(v) || 0, target: Math.round(target / 12) }))
+    : MONTHS.map((m) => ({ month: m, collected: Math.floor(200000 + Math.random() * 400000), target: Math.round((target || 5000000) / 12) }));
   return (
     <div className="space-y-5">
-      {/* Progress bar */}
       <div className="space-y-2">
         <div className="flex justify-between text-xs font-semibold text-slate-500">
           <span>₦{collected.toLocaleString()} collected</span>
           <span className="text-blue-600">{pct}%</span>
         </div>
         <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${pct}%` }}
+          <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }}
             transition={{ duration: 1, ease: "easeOut" }}
-            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500"
-          />
+            className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500" />
         </div>
         <div className="flex justify-between text-xs text-slate-400">
           <span>Target: ₦{target.toLocaleString()}</span>
           <span>Remaining: ₦{Math.max(0, target - collected).toLocaleString()}</span>
         </div>
       </div>
-
       <ResponsiveContainer width="100%" height={190}>
         <BarChart data={chartData} margin={{ top: 0, right: 10, left: -20, bottom: 0 }} barSize={8}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -244,20 +308,12 @@ const FeesChart = ({ collected = 0, target = 0, monthlyData = [], loading }) => 
   );
 };
 
-// ── Grade Distribution Pie ─────────────────────────────────────────────────
 const GradeChart = ({ gradeDistribution = [], overallGpa = 0, loading }) => {
   if (loading) return <div className="h-64 flex items-center justify-center"><Loader size="sm" /></div>;
-
   const data = gradeDistribution.length
     ? gradeDistribution
-    : [
-        { grade: "A", count: 120 }, { grade: "B", count: 95 },
-        { grade: "C", count: 60 },  { grade: "D", count: 25 },
-        { grade: "F", count: 10 },
-      ];
-
+    : [{ grade: "A", count: 120 }, { grade: "B", count: 95 }, { grade: "C", count: 60 }, { grade: "D", count: 25 }, { grade: "F", count: 10 }];
   const radialData = [{ name: "GPA", value: Math.min((overallGpa / 4) * 100, 100), fill: "#3b82f6" }];
-
   return (
     <div className="grid grid-cols-2 gap-4">
       <div>
@@ -265,14 +321,10 @@ const GradeChart = ({ gradeDistribution = [], overallGpa = 0, loading }) => {
         <ResponsiveContainer width="100%" height={200}>
           <PieChart>
             <Pie data={data} dataKey="count" nameKey="grade" cx="50%" cy="50%"
-              outerRadius={75} innerRadius={40}
-              paddingAngle={3} strokeWidth={0}
+              outerRadius={75} innerRadius={40} paddingAngle={3} strokeWidth={0}
               label={({ grade, percent }) => percent > 0.05 ? `${grade} ${(percent * 100).toFixed(0)}%` : ""}
-              labelLine={false}
-            >
-              {data.map((_, i) => (
-                <Cell key={i} fill={GRADE_COLORS[i % GRADE_COLORS.length]} />
-              ))}
+              labelLine={false}>
+              {data.map((_, i) => <Cell key={i} fill={GRADE_COLORS[i % GRADE_COLORS.length]} />)}
             </Pie>
             <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: "none", boxShadow: "0 4px 20px rgba(0,0,0,.12)" }} />
           </PieChart>
@@ -283,16 +335,11 @@ const GradeChart = ({ gradeDistribution = [], overallGpa = 0, loading }) => {
         <ResponsiveContainer width="100%" height={200}>
           <RadialBarChart cx="50%" cy="50%" innerRadius="55%" outerRadius="90%"
             barSize={14} data={radialData} startAngle={90} endAngle={-270}>
-            <RadialBar background={{ fill: "#f1f5f9" }} clockWise dataKey="value"
-              cornerRadius={8} fill="#3b82f6" />
-            <text x="50%" y="48%" textAnchor="middle" dominantBaseline="middle"
-              fill="#0f172a" fontSize={24} fontWeight={700}>
+            <RadialBar background={{ fill: "#f1f5f9" }} clockWise dataKey="value" cornerRadius={8} fill="#3b82f6" />
+            <text x="50%" y="48%" textAnchor="middle" dominantBaseline="middle" fill="#0f172a" fontSize={24} fontWeight={700}>
               {overallGpa > 0 ? overallGpa.toFixed(1) : "—"}
             </text>
-            <text x="50%" y="63%" textAnchor="middle" dominantBaseline="middle"
-              fill="#94a3b8" fontSize={10}>
-              out of 4.0
-            </text>
+            <text x="50%" y="63%" textAnchor="middle" dominantBaseline="middle" fill="#94a3b8" fontSize={10}>out of 4.0</text>
           </RadialBarChart>
         </ResponsiveContainer>
       </div>
@@ -300,12 +347,9 @@ const GradeChart = ({ gradeDistribution = [], overallGpa = 0, loading }) => {
   );
 };
 
-// ── Subject Performance Chart ──────────────────────────────────────────────
 const SubjectChart = ({ subjectPerformance = [], loading }) => {
   if (loading) return <div className="h-64 flex items-center justify-center"><Loader size="sm" /></div>;
-
-  const data = subjectPerformance.length ? subjectPerformance : [];
-  if (!data.length) {
+  if (!subjectPerformance.length) {
     return (
       <div className="h-48 flex flex-col items-center justify-center text-slate-400 gap-2">
         <BarChart3 className="w-8 h-8 opacity-40" />
@@ -313,13 +357,11 @@ const SubjectChart = ({ subjectPerformance = [], loading }) => {
       </div>
     );
   }
-
   return (
     <ResponsiveContainer width="100%" height={240}>
-      <BarChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 30 }} barSize={10}>
+      <BarChart data={subjectPerformance} margin={{ top: 5, right: 10, left: -20, bottom: 30 }} barSize={10}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-        <XAxis dataKey="subject" tick={{ fontSize: 10, fill: "#94a3b8" }} angle={-30} textAnchor="end"
-          axisLine={false} tickLine={false} interval={0} />
+        <XAxis dataKey="subject" tick={{ fontSize: 10, fill: "#94a3b8" }} angle={-30} textAnchor="end" axisLine={false} tickLine={false} interval={0} />
         <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
         <Tooltip content={<ChartTooltip suffix="%" />} />
         <Legend iconType="circle" iconSize={7} wrapperStyle={{ fontSize: 11 }} />
@@ -330,7 +372,7 @@ const SubjectChart = ({ subjectPerformance = [], loading }) => {
   );
 };
 
-// ── Person List (shared for students + teachers) ───────────────────────────
+// ── Person List ────────────────────────────────────────────────────────────
 const PersonList = ({ items, loading, emptyIcon: EmptyIcon, emptyLabel, onViewAll, onViewItem, totalLabel }) => {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -338,10 +380,7 @@ const PersonList = ({ items, loading, emptyIcon: EmptyIcon, emptyLabel, onViewAl
   const filtered = items.filter((p) => {
     const text = `${p.name} ${p.email} ${p.meta || ""}`.toLowerCase();
     const matchSearch = text.includes(search.toLowerCase());
-    const matchStatus =
-      status === "all" ? true :
-      status === "active" ? p.active :
-      !p.active;
+    const matchStatus = status === "all" ? true : status === "active" ? p.active : !p.active;
     return matchSearch && matchStatus;
   });
 
@@ -356,7 +395,6 @@ const PersonList = ({ items, loading, emptyIcon: EmptyIcon, emptyLabel, onViewAl
 
   return (
     <div className="flex flex-col">
-      {/* Search + filter */}
       <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/60 flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
@@ -379,7 +417,6 @@ const PersonList = ({ items, loading, emptyIcon: EmptyIcon, emptyLabel, onViewAl
         </select>
       </div>
 
-      {/* List */}
       <div className="overflow-y-auto max-h-80 divide-y divide-slate-100">
         {!items.length ? (
           <div className="py-10 text-center space-y-2 text-slate-400">
@@ -398,21 +435,20 @@ const PersonList = ({ items, loading, emptyIcon: EmptyIcon, emptyLabel, onViewAl
               onClick={() => onViewItem(p.id)}
               className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 cursor-pointer transition-colors"
             >
+              {/* Avatar with real initials */}
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
                 style={{ background: p.avatarBg }}
               >
-                {p.name?.[0]?.toUpperCase() || "?"}
+                {p.name?.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "?"}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800 truncate">{p.name}</p>
+                <p className="text-sm font-semibold text-slate-800 truncate">{p.name}</p>
                 <p className="text-xs text-slate-400 truncate">{p.meta}</p>
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                  p.active
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-slate-100 text-slate-500"
+                  p.active ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-600"
                 }`}>
                   {p.active ? "Active" : "Inactive"}
                 </span>
@@ -423,60 +459,15 @@ const PersonList = ({ items, loading, emptyIcon: EmptyIcon, emptyLabel, onViewAl
         )}
       </div>
 
-      {/* Footer */}
       <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/60">
-        <button
-          onClick={onViewAll}
-          className="w-full text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors py-1"
-        >
+        <button onClick={onViewAll}
+          className="w-full text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors py-1">
           View all {totalLabel} ({items.length}) →
         </button>
       </div>
     </div>
   );
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DATA NORMALISERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-const STUDENT_COLORS = ["#3b82f6","#6366f1","#8b5cf6","#ec4899","#f59e0b","#10b981"];
-const TEACHER_COLORS = ["#10b981","#059669","#0d9488","#0891b2","#0284c7","#2563eb"];
-
-const normaliseStudents = (raw) =>
-  raw.map((s, i) => ({
-    id: s.id || s._id || i,
-    name: `${s.firstName || s.first_name || s.name || "Unknown"}`,
-    email: s.email || "—",
-    meta: [
-      s.class?.name || s.class_name || s.current_class || s.class || "No class",
-      s.admission_number || s.student_id ? `#${s.admission_number || s.student_id}` : null,
-    ].filter(Boolean).join(" · "),
-    active: s.is_active !== false && s.status !== "inactive",
-    avatarBg: STUDENT_COLORS[i % STUDENT_COLORS.length],
-  }));
-
-const normaliseTeachers = (raw) =>
-  raw.map((t, i) => {
-    const u = t.user || t;
-    const subjectNames = (t.subjects || t.assignments || [])
-      .slice(0, 2)
-      .map((s) => (typeof s === "string" ? s : s?.name || s?.subject_name || ""))
-      .filter(Boolean)
-      .join(", ");
-    return {
-      id: t.id || t._id || u.id || i,
-      name: u.firstName || u.first_name || u.name || "Unknown",
-      email: u.email || "—",
-      meta: [
-        subjectNames || "No subjects",
-        t.isClassHead ? `Head of ${t.headedClassArm?.name || "class"}` : null,
-        t.employee_id || t.staff_id ? `ID: ${t.employee_id || t.staff_id}` : null,
-      ].filter(Boolean).join(" · "),
-      active: (u.isActive ?? u.is_active) !== false && u.status !== "inactive",
-      avatarBg: TEACHER_COLORS[i % TEACHER_COLORS.length],
-    };
-  });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN DASHBOARD
@@ -486,14 +477,14 @@ const SchoolAdminDashboard = () => {
   const { user } = useAuth();
   const navigate  = useNavigate();
 
-  const [loading, setLoading] = useState(true);
+  const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats]           = useState({ totalStudents: 0, totalTeachers: 0, totalRevenue: 0, attendanceRate: 0, totalClasses: 0, totalSubjects: 0 });
-  const [students, setStudents]     = useState([]);
-  const [teachers, setTeachers]     = useState([]);
+  const [stats,      setStats]      = useState({ totalStudents: 0, totalTeachers: 0, totalRevenue: 0, attendanceRate: 0, totalClasses: 0, totalSubjects: 0 });
+  const [students,   setStudents]   = useState([]);
+  const [teachers,   setTeachers]   = useState([]);
   const [attendance, setAttendance] = useState(null);
-  const [fees, setFees]             = useState(null);
-  const [academics, setAcademics]   = useState(null);
+  const [fees,       setFees]       = useState(null);
+  const [academics,  setAcademics]  = useState(null);
 
   const fetchAll = useCallback(async (isRefresh = false) => {
     isRefresh ? setRefreshing(true) : setLoading(true);
@@ -509,16 +500,14 @@ const SchoolAdminDashboard = () => {
           schoolAPI.getPayments({ limit: 1000 }),
         ]);
 
-      // ── Extract raw arrays ────────────────────────────────────────────────
-      const rawStudents = extractArray(studRes, "students", "items", "results");
-      const rawTeachers = extractArray(teachRes, "teachers", "items", "results");
-      const rawClasses  = extractArray(classRes, "classes", "items");
-      const rawSubjects = extractArray(subRes,   "subjects", "items");
+      const rawStudents = extractArray(studRes,    "students", "items", "results");
+      const rawTeachers = extractArray(teachRes,   "teachers", "items", "results");
+      const rawClasses  = extractArray(classRes,   "classes",  "items");
+      const rawSubjects = extractArray(subRes,     "subjects", "items");
       const analytics   = extractObject(analyticsRes);
       const wallet      = extractObject(walletRes);
-      const rawPayments = extractArray(payRes, "payments", "items");
+      const rawPayments = extractArray(payRes,     "payments", "items");
 
-      // ── Revenue calculation ────────────────────────────────────────────────
       const paidStatuses = new Set(["completed","paid","success","confirmed"]);
       const calcRevenue = rawPayments.reduce((sum, p) => {
         const status = (p.status || p.payment_status || "").toLowerCase();
@@ -526,32 +515,28 @@ const SchoolAdminDashboard = () => {
       }, 0);
       const finalRevenue = calcRevenue || wallet.balance || wallet.total_balance || 0;
 
-      // ── Stats ──────────────────────────────────────────────────────────────
       setStats({
-        totalStudents:  rawStudents.length || analytics.total_students  || analytics.totalStudents  || 0,
-        totalTeachers:  rawTeachers.length || analytics.total_teachers  || analytics.totalTeachers  || 0,
-        totalClasses:   rawClasses.length  || analytics.total_classes   || analytics.totalClasses   || 0,
-        totalSubjects:  rawSubjects.length || analytics.total_subjects  || analytics.totalSubjects  || 0,
-        attendanceRate: analytics.attendance_rate || analytics.average_attendance || analytics.attendanceRate || 0,
+        totalStudents:  rawStudents.length || analytics.total_students  || 0,
+        totalTeachers:  rawTeachers.length || analytics.total_teachers  || 0,
+        totalClasses:   rawClasses.length  || analytics.total_classes   || 0,
+        totalSubjects:  rawSubjects.length || analytics.total_subjects  || 0,
+        attendanceRate: analytics.attendance_rate || analytics.average_attendance || 0,
         totalRevenue:   finalRevenue,
       });
 
-      // ── Chart data ─────────────────────────────────────────────────────────
-      setAttendance({
-        monthly_data: analytics.monthly_attendance || analytics.attendance_trend || [],
-      });
+      setAttendance({ monthly_data: analytics.monthly_attendance || analytics.attendance_trend || [] });
       setFees({
         total_collected: finalRevenue,
-        target: analytics.fees_target || analytics.annual_fees_target || 0,
+        target:  analytics.fees_target || analytics.annual_fees_target || 0,
         monthly: analytics.monthly_fees || analytics.fees_trend || [],
       });
       setAcademics({
-        grade_distribution: analytics.grade_distribution || analytics.grades || [],
+        grade_distribution:  analytics.grade_distribution  || analytics.grades           || [],
         subject_performance: analytics.subject_performance || analytics.subject_averages || [],
-        overall_gpa: analytics.overall_gpa || analytics.average_gpa || 0,
+        overall_gpa:         analytics.overall_gpa         || analytics.average_gpa      || 0,
       });
 
-      // ── Normalised person lists ────────────────────────────────────────────
+      // ── Use fixed normalisers that read s.user.* and s.enrollments[] ──
       setStudents(normaliseStudents(rawStudents));
       setTeachers(normaliseTeachers(rawTeachers));
 
@@ -572,30 +557,30 @@ const SchoolAdminDashboard = () => {
     return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
   })();
 
-  const firstName = user?.firstName || user?.first_name || user?.username || "Admin";
+  const firstName  = user?.firstName || user?.first_name || user?.username || "Admin";
   const schoolName = user?.school?.schoolName || user?.schoolName || user?.school_name || "your school";
-  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const today      = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   const STAT_CARDS = [
-    { title: "Total Students",  value: stats.totalStudents,                  icon: Users,        accent: "#3b82f6", change: "+12%", positive: true,  action: "/school-admin/students"  },
-    { title: "Total Teachers",  value: stats.totalTeachers,                  icon: UserCircle,   accent: "#10b981", change: "+5%",  positive: true,  action: "/school-admin/teachers"  },
-    { title: "Total Revenue",   value: `₦${stats.totalRevenue.toLocaleString()}`, icon: DollarSign, accent: "#8b5cf6", change: "+18%", positive: true, action: "/school-admin/fees"     },
-    { title: "Attendance Rate", value: `${stats.attendanceRate}%`,           icon: TrendingUp,   accent: "#f59e0b", change: "+3%",  positive: true,  action: "/school-admin/attendance"},
-    { title: "Total Classes",   value: stats.totalClasses,                   icon: GraduationCap,accent: "#ef4444", change: "+2%",  positive: true,  action: "/school-admin/classes"   },
-    { title: "Total Subjects",  value: stats.totalSubjects,                  icon: Book,         accent: "#06b6d4", change: "+4%",  positive: true,  action: "/school-admin/subjects"  },
+    { title: "Total Students",  value: stats.totalStudents,                       icon: Users,        accent: "#3b82f6", change: "+12%", positive: true, action: "/school-admin/students"   },
+    { title: "Total Teachers",  value: stats.totalTeachers,                       icon: UserCircle,   accent: "#10b981", change: "+5%",  positive: true, action: "/school-admin/teachers"   },
+    { title: "Total Revenue",   value: `₦${stats.totalRevenue.toLocaleString()}`, icon: DollarSign,   accent: "#8b5cf6", change: "+18%", positive: true, action: "/school-admin/fees"       },
+    { title: "Attendance Rate", value: `${stats.attendanceRate}%`,                icon: TrendingUp,   accent: "#f59e0b", change: "+3%",  positive: true, action: "/school-admin/attendance" },
+    { title: "Total Classes",   value: stats.totalClasses,                        icon: GraduationCap,accent: "#ef4444", change: "+2%",  positive: true, action: "/school-admin/classes"    },
+    { title: "Total Subjects",  value: stats.totalSubjects,                       icon: Book,         accent: "#06b6d4", change: "+4%",  positive: true, action: "/school-admin/subjects"   },
   ];
 
   const QUICK_ACTIONS = [
-    { icon: UserPlus,  label: "Add Student",    path: "/school-admin/create-student",  color: "#3b82f6" },
-    { icon: UserPlus,  label: "Add Teacher",    path: "/school-admin/create-teacher",  color: "#10b981" },
-    { icon: CreditCard,label: "Fees",           path: "/school-admin/fees",            color: "#8b5cf6" },
-    { icon: Award,     label: "Results",        path: "/school-admin/results",         color: "#f59e0b" },
-    { icon: Clock,     label: "Timetable",      path: "/school-admin/timetable",       color: "#06b6d4" },
-    { icon: Calendar,  label: "Attendance",     path: "/school-admin/attendance",      color: "#ef4444" },
-    { icon: BookOpen,  label: "Subjects",       path: "/school-admin/subjects",        color: "#6366f1" },
-    { icon: FileText,  label: "Bulk Upload",    path: "/school-admin/bulk-upload",     color: "#0891b2" },
-    { icon: BarChart3, label: "Reports",        path: "/school-admin/reports",         color: "#0d9488" },
-    { icon: Upload,    label: "Announcements",  path: "/school-admin/announcements",   color: "#be185d" },
+    { icon: UserPlus,   label: "Add Student",   path: "/school-admin/create-student",   color: "#3b82f6" },
+    { icon: UserPlus,   label: "Add Teacher",   path: "/school-admin/create-teacher",   color: "#10b981" },
+    { icon: CreditCard, label: "Fees",          path: "/school-admin/fees",             color: "#8b5cf6" },
+    { icon: Award,      label: "Results",       path: "/school-admin/results",          color: "#f59e0b" },
+    { icon: Clock,      label: "Timetable",     path: "/school-admin/timetable",        color: "#06b6d4" },
+    { icon: Calendar,   label: "Attendance",    path: "/school-admin/attendance",       color: "#ef4444" },
+    { icon: BookOpen,   label: "Subjects",      path: "/school-admin/subjects",         color: "#6366f1" },
+    { icon: FileText,   label: "Bulk Upload",   path: "/school-admin/bulk-upload",      color: "#0891b2" },
+    { icon: BarChart3,  label: "Reports",       path: "/school-admin/reports",          color: "#0d9488" },
+    { icon: Upload,     label: "Announcements", path: "/school-admin/announcements",    color: "#be185d" },
   ];
 
   if (loading) return <Loader fullScreen />;
@@ -603,23 +588,16 @@ const SchoolAdminDashboard = () => {
   return (
     <div className="space-y-6 pb-8">
 
-      {/* ── Hero banner ── */}
-      <motion.div
-        initial={{ opacity: 0, y: -16 }}
-        animate={{ opacity: 1, y: 0 }}
+      {/* Hero */}
+      <motion.div initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }}
         className="relative overflow-hidden rounded-2xl p-6 text-white"
-        style={{ background: "linear-gradient(135deg, #1d4ed8 0%, #1e40af 50%, #312e81 100%)" }}
-      >
-        {/* Background grid decoration */}
+        style={{ background: "linear-gradient(135deg, #1d4ed8 0%, #1e40af 50%, #312e81 100%)" }}>
         <div className="absolute inset-0 opacity-10"
           style={{ backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)", backgroundSize: "24px 24px" }} />
-
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-blue-200 text-sm font-medium mb-1">{today}</p>
-            <h1 className="text-2xl font-bold tracking-tight">
-              {greeting}, {firstName}! 👋
-            </h1>
+            <h1 className="text-2xl font-bold tracking-tight">{greeting}, {firstName}! 👋</h1>
             <p className="text-blue-200 mt-1 text-sm">
               Here's what's happening at <span className="text-white font-semibold">{schoolName}</span>.
             </p>
@@ -630,25 +608,20 @@ const SchoolAdminDashboard = () => {
                 { label: `${stats.attendanceRate}% Attendance`, icon: Activity },
               ].map(({ label, icon: Icon }) => (
                 <span key={label} className="flex items-center gap-1.5 bg-white/15 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-medium">
-                  <Icon className="w-3.5 h-3.5" />
-                  {label}
+                  <Icon className="w-3.5 h-3.5" />{label}
                 </span>
               ))}
             </div>
           </div>
-
-          <button
-            onClick={() => fetchAll(true)}
-            disabled={refreshing}
-            className="flex items-center gap-2 bg-white/15 hover:bg-white/25 transition-colors px-4 py-2 rounded-xl text-sm font-semibold backdrop-blur-sm"
-          >
+          <button onClick={() => fetchAll(true)} disabled={refreshing}
+            className="flex items-center gap-2 bg-white/15 hover:bg-white/25 transition-colors px-4 py-2 rounded-xl text-sm font-semibold backdrop-blur-sm">
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
             {refreshing ? "Refreshing…" : "Refresh"}
           </button>
         </div>
       </motion.div>
 
-      {/* ── Stat cards ── */}
+      {/* Stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         {STAT_CARDS.map((c, i) => (
           <motion.div key={c.title} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}>
@@ -657,96 +630,53 @@ const SchoolAdminDashboard = () => {
         ))}
       </div>
 
-      {/* ── Attendance + Fees charts ── */}
+      {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
-          <DashCard
-            title="Attendance Overview"
-            subtitle="Monthly attendance rate (%)"
-            action="View Details"
-            onAction={() => navigate("/school-admin/attendance")}
-          >
+          <DashCard title="Attendance Overview" subtitle="Monthly attendance rate (%)" action="View Details" onAction={() => navigate("/school-admin/attendance")}>
             <AttendanceChart data={attendance} loading={false} />
           </DashCard>
         </motion.div>
         <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
-          <DashCard
-            title="Fees Collection"
-            subtitle="Monthly collected vs target"
-            action="View Details"
-            onAction={() => navigate("/school-admin/fees")}
-          >
-            <FeesChart
-              collected={fees?.total_collected}
-              target={fees?.target}
-              monthlyData={fees?.monthly}
-              loading={false}
-            />
+          <DashCard title="Fees Collection" subtitle="Monthly collected vs target" action="View Details" onAction={() => navigate("/school-admin/fees")}>
+            <FeesChart collected={fees?.total_collected} target={fees?.target} monthlyData={fees?.monthly} loading={false} />
           </DashCard>
         </motion.div>
       </div>
 
-      {/* ── Students + Teachers lists ── */}
+      {/* Person lists */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-          <DashCard
-            title={`Students`}
-            subtitle={`${students.length} enrolled`}
-            action="Manage"
-            onAction={() => navigate("/school-admin/students")}
-            className="!p-0"
-          >
+          <DashCard title="Students" subtitle={`${students.length} total`} action="Manage" onAction={() => navigate("/school-admin/students")} className="!p-0">
             <div className="-mx-6 -mb-6">
-              <PersonList
-                items={students}
-                loading={false}
-                emptyIcon={Users}
-                emptyLabel="No students found"
+              <PersonList items={students} loading={false} emptyIcon={Users} emptyLabel="No students found"
                 onViewAll={() => navigate("/school-admin/students")}
                 onViewItem={(id) => navigate(`/school-admin/students/${id}`)}
-                totalLabel="students"
-              />
+                totalLabel="students" />
             </div>
           </DashCard>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <DashCard
-            title="Teachers"
-            subtitle={`${teachers.length} teaching staff`}
-            action="Manage"
-            onAction={() => navigate("/school-admin/teachers")}
-            className="!p-0"
-          >
+          <DashCard title="Teachers" subtitle={`${teachers.length} teaching staff`} action="Manage" onAction={() => navigate("/school-admin/teachers")} className="!p-0">
             <div className="-mx-6 -mb-6">
-              <PersonList
-                items={teachers}
-                loading={false}
-                emptyIcon={UserCircle}
-                emptyLabel="No teachers found"
+              <PersonList items={teachers} loading={false} emptyIcon={UserCircle} emptyLabel="No teachers found"
                 onViewAll={() => navigate("/school-admin/teachers")}
                 onViewItem={(id) => navigate(`/school-admin/teachers/${id}`)}
-                totalLabel="teachers"
-              />
+                totalLabel="teachers" />
             </div>
           </DashCard>
         </motion.div>
       </div>
 
-      {/* ── Quick Actions ── */}
+      {/* Quick Actions */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
         <DashCard title="Quick Actions" subtitle="Jump to common tasks">
           <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
             {QUICK_ACTIONS.map((a, i) => (
-              <motion.button
-                key={a.label}
-                onClick={() => navigate(a.path)}
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: i * 0.04 }}
-                whileHover={{ y: -3 }}
-                whileTap={{ scale: 0.96 }}
-                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors"
-              >
+              <motion.button key={a.label} onClick={() => navigate(a.path)}
+                initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: i * 0.04 }} whileHover={{ y: -3 }} whileTap={{ scale: 0.96 }}
+                className="flex flex-col items-center gap-2 p-4 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `${a.color}18` }}>
                   <a.icon className="w-5 h-5" style={{ color: a.color }} />
                 </div>
@@ -757,26 +687,14 @@ const SchoolAdminDashboard = () => {
         </DashCard>
       </motion.div>
 
-      {/* ── Academic Performance ── */}
+      {/* Academic Performance */}
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-        <DashCard
-          title="Academic Performance"
-          subtitle="Grade distribution, GPA & subject averages"
-          action="View Results"
-          onAction={() => navigate("/school-admin/results")}
-        >
+        <DashCard title="Academic Performance" subtitle="Grade distribution, GPA & subject averages" action="View Results" onAction={() => navigate("/school-admin/results")}>
           <div className="space-y-8">
-            <GradeChart
-              gradeDistribution={academics?.grade_distribution}
-              overallGpa={academics?.overall_gpa}
-              loading={false}
-            />
+            <GradeChart gradeDistribution={academics?.grade_distribution} overallGpa={academics?.overall_gpa} loading={false} />
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-4">Subject Performance</p>
-              <SubjectChart
-                subjectPerformance={academics?.subject_performance}
-                loading={false}
-              />
+              <SubjectChart subjectPerformance={academics?.subject_performance} loading={false} />
             </div>
           </div>
         </DashCard>

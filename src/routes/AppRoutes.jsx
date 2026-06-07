@@ -18,6 +18,9 @@ import StudentDashboard from "../dashboards/student/StudentDashboard";
 import SchoolAdminProfile from "../dashboards/school-admin/SchoolAdminProfile";
 import CreateStudentAdmin from "../dashboards/school-admin/CreateStudentAdmin";
 import CreateTeacherAdmin from "../dashboards/school-admin/CreateTeacherAdmin";
+import AcademicManagement from "../dashboards/school-admin/AcademicManagement";
+import TeacherDetail from "../dashboards/school-admin/TeacherDetail";
+import StudentDetail from "../dashboards/school-admin/StudentDetail";
 
 const AppRoutes = () => {
   return (
@@ -45,6 +48,9 @@ const AppRoutes = () => {
      <Route path="profile" element={<SchoolAdminProfile />} />
      <Route path="student-management" element={<CreateStudentAdmin />} />
      <Route path="teachers-management" element={<CreateTeacherAdmin />} />
+     <Route path="academic-management" element={<AcademicManagement />} />
+      <Route path="teachers /:id" element={<TeacherDetail />} />
+       <Route path="students/:id" element={<StudentDetail />} />
   </Route>
 
   <Route path="/teacher" element={<DashboardLayout />}>

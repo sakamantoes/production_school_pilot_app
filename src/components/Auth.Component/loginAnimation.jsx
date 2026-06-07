@@ -124,6 +124,7 @@ const LoginAnimation = () => {
   const [errors, setErrors] = useState({});
 
   const { login } = useAuth();
+  const navigate = useNavigate();
   const location = useLocation();
 
   const handleChange = useCallback((e) => {
@@ -153,16 +154,36 @@ const LoginAnimation = () => {
       });
 
       // Show success confirmation before redirect
-      // AuthContext.login() typically handles navigation, so we show the
-      // overlay briefly — navigation handled by context as before
       if (result && result.success !== false) {
         const name = result?.user?.firstName || result?.data?.firstName || "";
         setUserName(name);
         setLoginSuccess(true);
-        // Navigation is handled in AuthContext.login()
+        
+        // Redirect after success overlay
+        setTimeout(() => {
+          const from = location.state?.from?.pathname || "/dashboard";
+          navigate(from, { replace: true });
+        }, 1500);
       }
     } catch (err) {
-      toast.error(err?.message || "Login failed. Please try again.");
+      // Handle different error scenarios
+      const errorMessage = err?.response?.data?.message || err?.message || "Login failed. Please try again.";
+      
+      // Specific error messages for common scenarios
+      if (errorMessage.toLowerCase().includes("invalid") || 
+          errorMessage.toLowerCase().includes("credential")) {
+        toast.error("Invalid email or password. Please try again.");
+      } else if (errorMessage.toLowerCase().includes("verify")) {
+        toast.error("Please verify your email before logging in.");
+      } else if (errorMessage.toLowerCase().includes("blocked") || 
+                 errorMessage.toLowerCase().includes("suspended")) {
+        toast.error("Your account has been suspended. Contact support.");
+      } else {
+        toast.error(errorMessage);
+      }
+      
+      // Clear password field on error for security
+      setFormData(prev => ({ ...prev, password: "" }));
     } finally {
       setLoading(false);
     }
@@ -279,7 +300,7 @@ const LoginAnimation = () => {
                 </span>
               </label>
               <Link
-                to="/change-password"
+                to="/forgot-password"
                 className="text-sm font-semibold text-blue-600 hover:text-blue-700 hover:underline transition-colors"
               >
                 Forgot password?

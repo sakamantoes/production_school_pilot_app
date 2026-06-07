@@ -62,6 +62,9 @@ export const teacherAPI = {
 };
 
 // ==================== STUDENT API ====================
+// Drop-in replacement for the studentAPI section in schoolApi.js
+// Fixes: permanentlyDeleteStudent uses correct endpoint DELETE /admin/students/:id
+
 export const studentAPI = {
   // Create student
   createStudent: async (studentData) => {
@@ -87,13 +90,26 @@ export const studentAPI = {
     return response.data;
   },
 
-  // Delete student
+  // Soft delete — deactivates account, keeps data
   deleteStudent: async (studentId) => {
+    const response = await api.delete(`/admin/students/${studentId}/deactivate`);
+    return response.data;
+  },
+
+  // Reactivate a deactivated student
+  activateStudent: async (studentId) => {
+    const response = await api.post(`/admin/students/${studentId}/activate`);
+    return response.data;
+  },
+
+  // Hard delete — permanently removes student and all related data
+  // Calls DELETE /admin/students/:id  (NOT /deactivate)
+  permanentlyDeleteStudent: async (studentId) => {
     const response = await api.delete(`/admin/students/${studentId}`);
     return response.data;
   },
 
-  // Enroll student in class
+  // Enroll student in class/session/term
   enrollStudent: async (enrollmentData) => {
     const response = await api.post("/admin/students/enroll", enrollmentData);
     return response.data;

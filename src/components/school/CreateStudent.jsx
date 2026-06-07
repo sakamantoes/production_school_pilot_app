@@ -1,516 +1,630 @@
-// components/CreateStudent.jsx
-import React, { useState, useEffect } from 'react';
-import { studentAPI } from '../../services/schoolApi';
-import { classAPI, sessionAPI, termAPI } from '../../services/schoolApi';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  User, Mail, Phone, Lock, Eye, EyeOff, Upload, RefreshCw,
+  GraduationCap, Calendar, BookOpen, Layers, X, Check,
+  AlertCircle, Loader2, UserPlus, ChevronDown,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import { studentAPI, classAPI, sessionAPI, termAPI } from '../../services/schoolApi';
+
+// ─────────────────────────────────────────────────────────────
+// ENV (Vite uses import.meta.env, NOT process.env)
+// ─────────────────────────────────────────────────────────────
+const CLOUD_NAME    = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS — module-level, stable refs
+// ─────────────────────────────────────────────────────────────
+
+/** Extract an array from any common API response shape */
+const toArray = (res, ...keys) => {
+  if (!res) return [];
+  const candidates = [res, res.data, res.data?.data, ...keys.map(k => res[k]), ...keys.map(k => res.data?.[k])];
+  for (const c of candidates) { if (Array.isArray(c)) return c; }
+  return [];
+};
+
+/** Upload a file to Cloudinary and return the secure URL */
+const cloudUpload = async (file, setUploading) => {
+  if (!CLOUD_NAME || !UPLOAD_PRESET) throw new Error('Cloudinary is not configured. Check VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in your .env file.');
+  setUploading(true);
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', UPLOAD_PRESET);
+  fd.append('folder', 'students');
+  try {
+    const res  = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.secure_url) return data.secure_url;
+    throw new Error(data.error?.message || 'Upload failed');
+  } finally {
+    setUploading(false);
+  }
+};
+
+/** Generate a unique student ID not in the existing set */
+const makeStudentId = (year, existingSet) => {
+  for (let i = 0; i < 200; i++) {
+    const n  = Math.floor(Math.random() * 9000) + 1000;
+    const id = `STU/${year}/${n}`;
+    if (!existingSet.has(id)) return id;
+  }
+  return `STU/${year}/${Date.now().toString().slice(-6)}`;
+};
+
+// ─────────────────────────────────────────────────────────────
+// SUB-COMPONENTS — all outside parent (stable refs, no focus loss)
+// ─────────────────────────────────────────────────────────────
+
+const Field = ({
+  label, name, type = 'text', value, onChange, error,
+  required, placeholder, icon: Icon, hint, rightSlot, disabled,
+}) => (
+  <div className="space-y-1.5">
+    <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+      {Icon && <Icon className="w-3 h-3" />}
+      {label}
+      {required && <span className="text-rose-400">*</span>}
+    </label>
+    <div className="relative">
+      {Icon && (
+        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+          <Icon className={`w-4 h-4 ${error ? 'text-rose-400' : 'text-slate-400'}`} />
+        </div>
+      )}
+      <input
+        type={type}
+        name={name}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        placeholder={placeholder}
+        className={`w-full h-10 text-sm font-medium text-slate-800 placeholder:text-slate-300 rounded-xl border-2 outline-none transition-all
+          ${Icon ? 'pl-10' : 'pl-3.5'} ${rightSlot ? 'pr-12' : 'pr-3.5'}
+          ${disabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200' :
+            error
+              ? 'border-rose-300 bg-rose-50/40 focus:border-rose-400 focus:bg-white'
+              : 'border-slate-200 bg-slate-50 focus:border-blue-500 focus:bg-white hover:border-slate-300'
+          }`}
+      />
+      {rightSlot && <div className="absolute right-3 top-1/2 -translate-y-1/2">{rightSlot}</div>}
+    </div>
+    {hint && !error && <p className="text-[11px] text-slate-400">{hint}</p>}
+    <AnimatePresence>
+      {error && (
+        <motion.p
+          initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+          className="flex items-center gap-1 text-xs text-rose-500 font-medium"
+        >
+          <AlertCircle className="w-3 h-3 flex-shrink-0" />{error}
+        </motion.p>
+      )}
+    </AnimatePresence>
+  </div>
+);
+
+const SelectField = ({ label, name, value, onChange, options, disabled, placeholder, icon: Icon, error, required }) => (
+  <div className="space-y-1.5">
+    <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+      {Icon && <Icon className="w-3 h-3" />}
+      {label}
+      {required && <span className="text-rose-400">*</span>}
+    </label>
+    <div className="relative">
+      {Icon && (
+        <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+          <Icon className="w-4 h-4 text-slate-400" />
+        </div>
+      )}
+      <select
+        name={name}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        className={`w-full h-10 text-sm font-medium text-slate-800 rounded-xl border-2 outline-none transition-all appearance-none
+          ${Icon ? 'pl-10' : 'pl-3.5'} pr-9
+          ${disabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed border-slate-200' :
+            error ? 'border-rose-300 bg-rose-50/40 focus:border-rose-400' :
+            'border-slate-200 bg-slate-50 focus:border-blue-500 focus:bg-white hover:border-slate-300'
+          }`}
+      >
+        <option value="">{placeholder || `Select ${label}`}</option>
+        {options.map((o) => (
+          <option key={o.id || o.value} value={o.id || o.value}>{o.name || o.label}</option>
+        ))}
+      </select>
+      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+    </div>
+    <AnimatePresence>
+      {error && (
+        <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+          className="flex items-center gap-1 text-xs text-rose-500 font-medium"
+        >
+          <AlertCircle className="w-3 h-3 flex-shrink-0" />{error}
+        </motion.p>
+      )}
+    </AnimatePresence>
+  </div>
+);
+
+const SectionTitle = ({ icon: Icon, title, accent }) => (
+  <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 mb-1" style={{ borderBottomColor: `${accent}30` }}>
+    <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${accent}15` }}>
+      <Icon className="w-3.5 h-3.5" style={{ color: accent }} />
+    </div>
+    <h3 className="text-sm font-bold text-slate-700">{title}</h3>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────────────────────
+
+const INIT = {
+  firstName: '', lastName: '', email: '', phone: '', image: '',
+  studentId: '', admissionYear: new Date().getFullYear(),
+  password: '', confirmPassword: '',
+  classId: '', armId: '', sessionId: '', termId: '',
+};
 
 const CreateStudent = ({ onSuccess, onClose }) => {
-  const [loading, setLoading] = useState(false);
-  const [classes, setClasses] = useState([]);
-  const [sessions, setSessions] = useState([]);
-  const [arms, setArms] = useState([]);
-  const [terms, setTerms] = useState([]);
-  
-  const [formData, setFormData] = useState({
-    // Student Information
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    image: '',
-    // Student Specific
-    studentId: '',
-    admissionYear: new Date().getFullYear(),
-    password: '',
-    confirmPassword: '',
-    // Enrollment Information
-    classId: '',
-    armId: '',
-    sessionId: '',
-    termId: '',
-  });
+  const [form, setForm]             = useState(INIT);
+  const [errors, setErrors]         = useState({});
+  const [loading, setLoading]       = useState(false);
+  const [uploading, setUploading]   = useState(false);
+  const [showPwd1, setShowPwd1]     = useState(false);
+  const [showPwd2, setShowPwd2]     = useState(false);
+  const [fetchingData, setFetchingData] = useState(true);
 
-  const [errors, setErrors] = useState({});
+  // Reference data
+  const [classes,  setClasses]   = useState([]);
+  const [arms,     setArms]      = useState([]);
+  const [sessions, setSessions]  = useState([]);
+  const [terms,    setTerms]     = useState([]);
+  const existingIdsRef           = useRef(new Set());
 
-  // Fetch classes on component mount
+  // Image preview
+  const [imgPreview, setImgPreview] = useState(null);
+
+  // ── Load reference data ───────────────────────────────────────
   useEffect(() => {
-    fetchClasses();
-    fetchSessions();
-    fetchTerms();
+    const load = async () => {
+      setFetchingData(true);
+      try {
+        const [classRes, sessionRes, termRes, studentRes] = await Promise.allSettled([
+          classAPI.getClasses(),
+          sessionAPI.getSessions(),
+          termAPI.getTerms(),
+          studentAPI.getStudents({ limit: 5000 }),
+        ]);
+
+        const classData   = toArray(classRes.status   === 'fulfilled' ? classRes.value   : null, 'classes',  'items');
+        const sessionData = toArray(sessionRes.status === 'fulfilled' ? sessionRes.value : null, 'sessions', 'items');
+        const termData    = toArray(termRes.status    === 'fulfilled' ? termRes.value    : null, 'terms',    'items');
+        const studentData = toArray(studentRes.status === 'fulfilled' ? studentRes.value : null, 'students', 'items');
+
+        setClasses(classData);
+        setSessions(sessionData);
+        setTerms(termData);
+        existingIdsRef.current = new Set(studentData.map(s => s.studentId).filter(Boolean));
+      } catch (err) {
+        toast.error('Failed to load form data');
+      } finally {
+        setFetchingData(false);
+      }
+    };
+    load();
   }, []);
 
-  // Fetch arms when class changes
+  // ── Auto-generate student ID ──────────────────────────────────
   useEffect(() => {
-    if (formData.classId) {
-      fetchClassArms(formData.classId);
-    }
-  }, [formData.classId]);
+    if (fetchingData) return;
+    setForm(p => ({ ...p, studentId: makeStudentId(p.admissionYear, existingIdsRef.current) }));
+  }, [form.admissionYear, fetchingData]);
 
-  const fetchClasses = async () => {
-    try {
-      const response = await classAPI.getClasses();
-      setClasses(response.data || []);
-    } catch (error) {
-      console.error('Error fetching classes:', error);
-    }
-  };
+  // ── Arms: extracted from already-loaded classes (no extra API call) ──
+  useEffect(() => {
+    if (!form.classId) { setArms([]); setForm(p => ({ ...p, armId: '' })); return; }
+    const cls = classes.find(c => String(c.id) === String(form.classId));
+    // arms may live at cls.arms, cls.classArms, cls.class_arms
+    const found = cls?.arms || cls?.classArms || cls?.class_arms || [];
+    setArms(found);
+    setForm(p => ({ ...p, armId: '' }));
+  }, [form.classId, classes]);
 
-  const fetchSessions = async () => {
-    try {
-      const response = await sessionAPI.getSessions();
-      setSessions(response.data || []);
-    } catch (error) {
-      console.error('Error fetching sessions:', error);
-    }
-  };
-
-  const fetchTerms = async () => {
-    try {
-      const response = await termAPI.getTerms();
-      setTerms(response.data || []);
-    } catch (error) {
-      console.error('Error fetching terms:', error);
-    }
-  };
-
-  const fetchClassArms = async (classId) => {
-    try {
-      const response = await classAPI.getClasses(classId);
-      const selectedClass = response.data?.find(c => c.id === classId);
-      setArms(selectedClass?.arms || []);
-    } catch (error) {
-      console.error('Error fetching class arms:', error);
-    }
-  };
-
-  const handleChange = (e) => {
+  // ── Handlers ─────────────────────────────────────────────────
+  const handleChange = useCallback((e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    // Clear error for this field when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
+    setForm(p => ({ ...p, [name]: value }));
+    setErrors(p => ({ ...p, [name]: '' }));
+  }, []);
+
+  const handleImageUpload = useCallback(async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!['image/jpeg','image/png','image/jpg','image/webp'].includes(file.type)) {
+      setErrors(p => ({ ...p, image: 'JPEG, PNG or WEBP only' })); return;
     }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrors(p => ({ ...p, image: 'Max 5 MB' })); return;
+    }
+    // Optimistic preview
+    const reader = new FileReader();
+    reader.onloadend = () => setImgPreview(reader.result);
+    reader.readAsDataURL(file);
+    setErrors(p => ({ ...p, image: '' }));
+    try {
+      const url = await cloudUpload(file, setUploading);
+      setForm(p => ({ ...p, image: url }));
+      setImgPreview(url);
+      toast.success('Photo uploaded');
+    } catch (err) {
+      setErrors(p => ({ ...p, image: err.message }));
+      setImgPreview(null);
+    }
+  }, []);
+
+  const removeImage = useCallback(() => {
+    setForm(p => ({ ...p, image: '' }));
+    setImgPreview(null);
+  }, []);
+
+  const regenerateId = useCallback(() => {
+    setForm(p => ({ ...p, studentId: makeStudentId(p.admissionYear, existingIdsRef.current) }));
+  }, []);
+
+  // ── Validate ──────────────────────────────────────────────────
+  const validate = () => {
+    const e = {};
+    if (!form.firstName.trim())  e.firstName = 'First name is required';
+    if (!form.lastName.trim())   e.lastName  = 'Last name is required';
+    if (!form.email.trim())      e.email     = 'Email is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Invalid email';
+    if (!form.phone.trim())      e.phone     = 'Phone number is required';
+    else if (!/^[0-9+\-\s()]+$/.test(form.phone)) e.phone = 'Invalid phone number';
+    if (!form.studentId.trim())  e.studentId = 'Student ID is required';
+    if (!form.password)          e.password  = 'Password is required';
+    else if (form.password.length < 8) e.password = 'Minimum 8 characters';
+    if (form.password !== form.confirmPassword) e.confirmPassword = 'Passwords do not match';
+    if (!form.classId)           e.classId   = 'Class is required';
+    if (!form.armId)             e.armId     = 'Class arm is required';
+    if (!form.sessionId)         e.sessionId = 'Academic session is required';
+    if (!form.termId)            e.termId    = 'Term is required';
+    return e;
   };
 
-  const validateForm = () => {
-    const newErrors = {};
-
-    // Required fields
-    if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
-    if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
-    if (!formData.email.trim()) newErrors.email = 'Email is required';
-    if (!formData.studentId.trim()) newErrors.studentId = 'Student ID is required';
-    if (!formData.password) newErrors.password = 'Password is required';
-    if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-    }
-    if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    }
-
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (formData.email && !emailRegex.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
-
-    return newErrors;
-  };
-
-  const handleSubmit = async (e) => {
+  // ── Submit ────────────────────────────────────────────────────
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
-    
-    const validationErrors = validateForm();
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      return;
-    }
+    const errs = validate();
+    if (Object.keys(errs).length) { setErrors(errs); toast.error('Please fix the errors below'); return; }
 
     setLoading(true);
-    
     try {
-      // Prepare data for API
-      const studentData = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        phone: formData.phone || null,
-        image: formData.image || null,
-        studentId: formData.studentId,
-        admissionYear: parseInt(formData.admissionYear),
-        password: formData.password,
-        classId: formData.classId || null,
-        armId: formData.armId || null,
-        sessionId: formData.sessionId || null,
-        termId: formData.termId || null,
+      const payload = {
+        firstName:     form.firstName.trim(),
+        lastName:      form.lastName.trim(),
+        email:         form.email.trim(),
+        phone:         form.phone.trim()  || null,
+        image:         form.image         || null,
+        studentId:     form.studentId,
+        admissionYear: parseInt(form.admissionYear),
+        password:      form.password,
+        classId:       form.classId       || null,
+        armId:         form.armId         || null,
+        sessionId:     form.sessionId     || null,
+        termId:        form.termId        || null,
       };
 
-      const response = await studentAPI.createStudent(studentData);
-      
-      if (response.success) {
-        alert('Student created successfully!');
-        // Reset form
-        setFormData({
-          firstName: '',
-          lastName: '',
-          email: '',
-          phone: '',
-          image: '',
-          studentId: '',
-          admissionYear: new Date().getFullYear(),
-          password: '',
-          confirmPassword: '',
-          classId: '',
-          armId: '',
-          sessionId: '',
-          termId: '',
-        });
-        
-        // Call success callback if provided
-        if (onSuccess) {
-          onSuccess(response.data);
-        }
-        
-        // Close modal if onClose provided
-        if (onClose) {
-          onClose();
-        }
+      const res = await studentAPI.createStudent(payload);
+
+      // Accept various success shapes
+      if (res?.success !== false && !res?.error) {
+        toast.success(`Student ${form.firstName} ${form.lastName} created successfully!`);
+        onSuccess?.(res?.data || res);
+        onClose?.();
+      } else {
+        throw new Error(res?.message || 'Failed to create student');
       }
-    } catch (error) {
-      console.error('Error creating student:', error);
-      const errorMessage = error.response?.data?.message || 'Failed to create student. Please try again.';
-      setErrors({ submit: errorMessage });
-      alert(errorMessage);
+    } catch (err) {
+      const msg = err.response?.data?.message || err.message || 'Failed to create student';
+      setErrors(p => ({ ...p, submit: msg }));
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
-  };
+  }, [form, onSuccess, onClose]);
+
+  // Year options
+  const yearOptions = Array.from({ length: 10 }, (_, i) => {
+    const y = new Date().getFullYear() - i;
+    return { id: y, name: String(y) };
+  });
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center">
-          <h2 className="text-2xl font-bold text-gray-800">Create New Student</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+        animate={{ opacity: 1, scale: 1,    y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 16 }}
+        transition={{ duration: 0.22, ease: 'easeOut' }}
+        className="bg-[#f5f6fa] w-full max-w-3xl max-h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm shadow-blue-200">
+              <UserPlus className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-900">Create New Student</h2>
+              <p className="text-xs text-slate-400">Fill in the details to enrol a student</p>
+            </div>
+          </div>
           {onClose && (
             <button
               onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 focus:outline-none"
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <X className="w-4 h-4" />
             </button>
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6">
-          {errors.submit && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-              {errors.submit}
-            </div>
-          )}
+        {/* Loading overlay for initial data fetch */}
+        {fetchingData && (
+          <div className="flex-1 flex items-center justify-center gap-3 text-slate-500">
+            <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+            <span className="text-sm font-medium">Loading form data…</span>
+          </div>
+        )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Personal Information Section */}
-            <div className="col-span-2">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3 border-b pb-2">
-                Personal Information
-              </h3>
-            </div>
+        {/* Scrollable body */}
+        {!fetchingData && (
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                First Name *
-              </label>
-              <input
-                type="text"
-                name="firstName"
-                value={formData.firstName}
-                onChange={handleChange}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.firstName ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="Enter first name"
-              />
-              {errors.firstName && (
-                <p className="mt-1 text-sm text-red-600">{errors.firstName}</p>
+            {/* Global error */}
+            <AnimatePresence>
+              {errors.submit && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  className="flex items-center gap-2.5 p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium rounded-xl"
+                >
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  {errors.submit}
+                </motion.div>
               )}
+            </AnimatePresence>
+
+            {/* ── Personal Information ─────────────────────────── */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 space-y-4">
+              <SectionTitle icon={User} title="Personal Information" accent="#3b82f6" />
+
+              {/* Avatar upload */}
+              <div className="flex items-center gap-5">
+                <div className="relative flex-shrink-0">
+                  <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-slate-200 bg-slate-100 flex items-center justify-center">
+                    {imgPreview
+                      ? <img src={imgPreview} alt="Preview" className="w-full h-full object-cover" />
+                      : <User className="w-8 h-8 text-slate-300" />
+                    }
+                  </div>
+                  {uploading && (
+                    <div className="absolute inset-0 rounded-2xl bg-white/80 flex items-center justify-center">
+                      <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Profile Photo <span className="text-rose-400">*</span></p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl cursor-pointer transition-colors shadow-sm shadow-blue-200">
+                      <Upload className="w-3.5 h-3.5" />
+                      {uploading ? 'Uploading…' : 'Upload Photo'}
+                      <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
+                    </label>
+                    {imgPreview && (
+                      <button
+                        type="button"
+                        onClick={removeImage}
+                        className="flex items-center gap-1 px-3 py-2 text-xs font-semibold text-rose-600 border border-rose-200 hover:bg-rose-50 rounded-xl transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" /> Remove
+                      </button>
+                    )}
+                  </div>
+                  {errors.image
+                    ? <p className="text-xs text-rose-500 font-medium flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.image}</p>
+                    : <p className="text-xs text-slate-400">JPEG, PNG or WEBP — max 5 MB</p>
+                  }
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="First Name" name="firstName" value={form.firstName} onChange={handleChange} error={errors.firstName} required placeholder="John" icon={User} />
+                <Field label="Last Name"  name="lastName"  value={form.lastName}  onChange={handleChange} error={errors.lastName}  required placeholder="Doe"  icon={User} />
+                <Field label="Email Address" name="email" type="email" value={form.email} onChange={handleChange} error={errors.email} required placeholder="student@school.com" icon={Mail} />
+                <Field label="Phone Number"  name="phone" type="tel"   value={form.phone} onChange={handleChange} error={errors.phone} required placeholder="+234 800 000 0000"       icon={Phone} />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Last Name *
-              </label>
-              <input
-                type="text"
-                name="lastName"
-                value={formData.lastName}
-                onChange={handleChange}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.lastName ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="Enter last name"
-              />
-              {errors.lastName && (
-                <p className="mt-1 text-sm text-red-600">{errors.lastName}</p>
-              )}
+            {/* ── Student Details ──────────────────────────────── */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 space-y-4">
+              <SectionTitle icon={GraduationCap} title="Student Details" accent="#8b5cf6" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Student ID */}
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                    <GraduationCap className="w-3 h-3" /> Student ID <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={form.studentId}
+                      readOnly
+                      className="flex-1 h-10 px-3.5 text-sm font-medium text-slate-600 bg-slate-100 border-2 border-slate-200 rounded-xl outline-none cursor-default select-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={regenerateId}
+                      title="Generate new ID"
+                      className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-purple-100 border-2 border-slate-200 hover:border-purple-300 flex items-center justify-center transition-all text-slate-500 hover:text-purple-600"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-400">Format: STU/YEAR/XXXX — auto-generated &amp; unique</p>
+                </div>
+
+                {/* Admission Year */}
+                <SelectField
+                  label="Admission Year"
+                  name="admissionYear"
+                  value={form.admissionYear}
+                  onChange={handleChange}
+                  options={yearOptions}
+                  icon={Calendar}
+                  required
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email Address *
-              </label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.email ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="student@school.com"
-              />
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-600">{errors.email}</p>
-              )}
+            {/* ── Account Security ─────────────────────────────── */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 space-y-4">
+              <SectionTitle icon={Lock} title="Account Security" accent="#10b981" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field
+                  label="Password" name="password" type={showPwd1 ? 'text' : 'password'}
+                  value={form.password} onChange={handleChange} error={errors.password}
+                  required placeholder="Minimum 8 characters" icon={Lock}
+                  rightSlot={
+                    <button type="button" onClick={() => setShowPwd1(v => !v)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                      {showPwd1 ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                />
+                <Field
+                  label="Confirm Password" name="confirmPassword" type={showPwd2 ? 'text' : 'password'}
+                  value={form.confirmPassword} onChange={handleChange} error={errors.confirmPassword}
+                  required placeholder="Repeat password" icon={Lock}
+                  rightSlot={
+                    <button type="button" onClick={() => setShowPwd2(v => !v)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                      {showPwd2 ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  }
+                />
+              </div>
+              {/* Password match indicator */}
+              <AnimatePresence>
+                {form.confirmPassword && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    className={`flex items-center gap-1.5 text-xs font-semibold ${
+                      form.password === form.confirmPassword ? 'text-emerald-600' : 'text-rose-500'
+                    }`}
+                  >
+                    {form.password === form.confirmPassword
+                      ? <><Check className="w-3.5 h-3.5" /> Passwords match</>
+                      : <><X className="w-3.5 h-3.5" /> Passwords do not match</>
+                    }
+                  </motion.p>
+                )}
+              </AnimatePresence>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="+1234567890"
-              />
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Profile Image URL
-              </label>
-              <input
-                type="url"
-                name="image"
-                value={formData.image}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="https://example.com/student-image.jpg"
-              />
-            </div>
-
-            {/* Student Information Section */}
-            <div className="col-span-2">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3 border-b pb-2 mt-4">
-                Student Information
-              </h3>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Student ID *
-              </label>
-              <input
-                type="text"
-                name="studentId"
-                value={formData.studentId}
-                onChange={handleChange}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.studentId ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="STU-2024-001"
-              />
-              {errors.studentId && (
-                <p className="mt-1 text-sm text-red-600">{errors.studentId}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Admission Year
-              </label>
-              <input
-                type="number"
-                name="admissionYear"
-                value={formData.admissionYear}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="2024"
-                min="2000"
-                max={new Date().getFullYear()}
-              />
-            </div>
-
-            {/* Account Information Section */}
-            <div className="col-span-2">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3 border-b pb-2 mt-4">
-                Account Information
-              </h3>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Password *
-              </label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.password ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="Minimum 8 characters"
-              />
-              {errors.password && (
-                <p className="mt-1 text-sm text-red-600">{errors.password}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Confirm Password *
-              </label>
-              <input
-                type="password"
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                  errors.confirmPassword ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="Confirm password"
-              />
-              {errors.confirmPassword && (
-                <p className="mt-1 text-sm text-red-600">{errors.confirmPassword}</p>
-              )}
-            </div>
-
-            {/* Enrollment Information Section */}
-            <div className="col-span-2">
-              <h3 className="text-lg font-semibold text-gray-700 mb-3 border-b pb-2 mt-4">
-                Enrollment Information (Optional)
-              </h3>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Class
-              </label>
-              <select
-                name="classId"
-                value={formData.classId}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select Class</option>
-                {classes.map((cls) => (
-                  <option key={cls.id} value={cls.id}>
-                    {cls.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Class Arm
-              </label>
-              <select
-                name="armId"
-                value={formData.armId}
-                onChange={handleChange}
-                disabled={!formData.classId}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-              >
-                <option value="">Select Class Arm</option>
-                {arms.map((arm) => (
-                  <option key={arm.id} value={arm.id}>
-                    {arm.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Academic Session
-              </label>
-              <select
-                name="sessionId"
-                value={formData.sessionId}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select Session</option>
-                {sessions.map((session) => (
-                  <option key={session.id} value={session.id}>
-                    {session.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Term
-              </label>
-              <select
-                name="termId"
-                value={formData.termId}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select Term</option>
-                {terms.map((term) => (
-                  <option key={term.id} value={term.id}>
-                    {term.name}
-                  </option>
-                ))}
-              </select>
+            {/* ── Enrollment (Required) ────────────────────────── */}
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <SectionTitle icon={BookOpen} title="Enrollment Information" accent="#f59e0b" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-rose-500 bg-rose-50 px-2 py-0.5 rounded-full">Required</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <SelectField
+                  label="Class"
+                  name="classId"
+                  value={form.classId}
+                  onChange={handleChange}
+                  options={classes}
+                  placeholder="Select class"
+                  icon={GraduationCap}
+                  required
+                  error={errors.classId}
+                />
+                <SelectField
+                  label="Class Arm"
+                  name="armId"
+                  value={form.armId}
+                  onChange={handleChange}
+                  options={arms}
+                  placeholder={form.classId ? (arms.length ? 'Select arm' : 'No arms found') : 'Select a class first'}
+                  disabled={!form.classId || arms.length === 0}
+                  icon={Layers}
+                  required
+                  error={errors.armId}
+                />
+                <SelectField
+                  label="Academic Session"
+                  name="sessionId"
+                  value={form.sessionId}
+                  onChange={handleChange}
+                  options={sessions}
+                  placeholder="Select session"
+                  icon={Calendar}
+                  required
+                  error={errors.sessionId}
+                />
+                <SelectField
+                  label="Term"
+                  name="termId"
+                  value={form.termId}
+                  onChange={handleChange}
+                  options={terms}
+                  placeholder="Select term"
+                  icon={BookOpen}
+                  required
+                  error={errors.termId}
+                />
+              </div>
             </div>
           </div>
+        )}
 
-          {/* Form Actions */}
-          <div className="flex justify-end gap-3 mt-8 pt-4 border-t">
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 px-6 py-4 bg-white border-t border-slate-200 flex-shrink-0">
+          <p className="text-xs text-slate-400">
+            Fields marked <span className="text-rose-400 font-bold">*</span> are required
+          </p>
+          <div className="flex items-center gap-3">
             {onClose && (
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                className="px-4 py-2 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
               >
                 Cancel
               </button>
             )}
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            <motion.button
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading || uploading || fetchingData}
+              whileHover={{ scale: loading || uploading ? 1 : 1.02 }}
+              whileTap={{ scale: loading || uploading ? 1 : 0.98 }}
+              className="flex items-center gap-2 px-5 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl
+                shadow-sm shadow-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? (
-                <span className="flex items-center">
-                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Creating...
-                </span>
-              ) : (
-                'Create Student'
-              )}
-            </button>
+              {loading
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating…</>
+                : <><UserPlus className="w-4 h-4" /> Create Student</>
+              }
+            </motion.button>
           </div>
-        </form>
-      </div>
+        </div>
+      </motion.div>
     </div>
   );
 };
