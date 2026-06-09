@@ -48,6 +48,11 @@ export const teacherAPI = {
     return response.data;
   },
 
+   activateTeacher: async (teacherId) => {
+    const response = await api.patch(`/admin/teachers/${teacherId}/activate`);
+    return response.data;
+  },
+
   // Assign teacher to class/subject
   assignTeacher: async (assignmentData) => {
     const response = await api.post("/admin/teacher-assignments", assignmentData);

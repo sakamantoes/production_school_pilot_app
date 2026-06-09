@@ -29,7 +29,7 @@ export const authAPI = {
   login: async (credentials) => {
     const response = await api.post("auth/login", credentials);
 
-    console.log(response);
+    console.log(`Login response:`, response);
 
     // Try to extract a raw JWT from common response shapes
     const token = extractToken(response.data) || extractToken(response.data?.data) || null;
@@ -39,7 +39,7 @@ export const authAPI = {
       try { localStorage.setItem('auth_token_present', '1'); } catch {};
     }
 
-    return response.data;
+    return response;
   },
 
   // Get current user (from token)

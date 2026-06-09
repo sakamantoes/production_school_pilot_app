@@ -161,8 +161,8 @@ const LoginAnimation = () => {
         
         // Redirect after success overlay
         setTimeout(() => {
-          const from = location.state?.from?.pathname || "/dashboard";
-          navigate(from, { replace: true });
+         setLoginSuccess(false);
+         navigate(from, { replace: true });
         }, 1500);
       }
     } catch (err) {

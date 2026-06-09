@@ -2,7 +2,7 @@
 // ─── Complete single-file teacher management page ───────────────────────────
 // Matches the student page pattern exactly: same Avatar logic, same normalise
 // helper, same toArray data extraction, same dark-navy design system.
-// Includes: list, create, edit, assign, deactivate, remove assignment — all inline.
+// Includes: list, create, edit, assign, deactivate, activate, remove assignment — all inline.
 // Image upload uses Cloudinary — identical to student page!
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -162,6 +162,7 @@ const ConfirmDialog = ({ title, message, detail, confirmLabel, variant = 'danger
     danger:  { bg: 'bg-rose-100',   text: 'text-rose-600',   btn: 'bg-rose-600  hover:bg-rose-700'  },
     warning: { bg: 'bg-amber-100',  text: 'text-amber-600',  btn: 'bg-amber-500 hover:bg-amber-600' },
     info:    { bg: 'bg-blue-100',   text: 'text-blue-600',   btn: 'bg-blue-600  hover:bg-blue-700'  },
+    success: { bg: 'bg-emerald-100', text: 'text-emerald-600', btn: 'bg-emerald-600 hover:bg-emerald-700' },
   };
   const s = map[variant] || map.danger;
   return (
@@ -813,7 +814,20 @@ const CreateTeacherAdmin = () => {
       setConfirm(null);
       fetchTeachers();
     } catch (err) {
-      toast.error(err?.response?.data?.message || 'Failed');
+      toast.error(err?.response?.data?.message || 'Failed to deactivate teacher');
+    } finally { setActionBusy(false); }
+  };
+
+  // NEW: Activate teacher handler
+  const handleActivate = async () => {
+    setActionBusy(true);
+    try {
+      await teacherAPI.activateTeacher(confirm.teacher._raw?.id || confirm.teacher.id);
+      toast.success(`${confirm.teacher.firstName} ${confirm.teacher.lastName} activated`);
+      setConfirm(null);
+      fetchTeachers();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to activate teacher');
     } finally { setActionBusy(false); }
   };
 
@@ -948,7 +962,6 @@ const CreateTeacherAdmin = () => {
                       {/* Teacher */}
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-3">
-                          {/* Avatar: shows image if available, else colour initials */}
                           <Avatar t={t} size={36} />
                           <div className="min-w-0">
                             <p className="text-sm font-semibold text-slate-800 truncate">{t.firstName} {t.lastName}</p>
@@ -998,7 +1011,6 @@ const CreateTeacherAdmin = () => {
                       {/* Actions */}
                       <td className="px-5 py-3.5">
                         <div className="flex items-center gap-1">
-
                           {/* Assign */}
                           <ActionBtn
                             title="Assign Subject"
@@ -1015,7 +1027,7 @@ const CreateTeacherAdmin = () => {
                             <Edit2 className="w-4 h-4" />
                           </ActionBtn>
 
-                          {/* Deactivate / (no activate route yet) */}
+                          {/* Activate/Deactivate based on status */}
                           {t.isActive ? (
                             <ActionBtn
                               title="Deactivate"
@@ -1024,8 +1036,10 @@ const CreateTeacherAdmin = () => {
                               <PowerOff className="w-4 h-4" />
                             </ActionBtn>
                           ) : (
-                            <ActionBtn title="Inactive — no activate route yet" onClick={() => toast('Add POST /admin/teachers/:id/activate on backend', { icon: '⚠️' })}
-                              hoverColor="text-slate-500 bg-slate-100">
+                            <ActionBtn
+                              title="Activate"
+                              onClick={() => setConfirm({ type: 'activate', teacher: t })}
+                              hoverColor="text-emerald-600 bg-emerald-50">
                               <Power className="w-4 h-4" />
                             </ActionBtn>
                           )}
@@ -1105,6 +1119,21 @@ const CreateTeacherAdmin = () => {
             variant="warning"
             loading={actionBusy}
             onConfirm={handleDeactivate}
+            onCancel={() => setConfirm(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* NEW: Activate confirmation dialog */}
+      <AnimatePresence>
+        {confirm?.type === 'activate' && (
+          <ConfirmDialog
+            title="Activate Teacher"
+            message={`${confirm.teacher.firstName} ${confirm.teacher.lastName} will regain login access immediately.`}
+            confirmLabel={actionBusy ? 'Activating…' : 'Activate'}
+            variant="success"
+            loading={actionBusy}
+            onConfirm={handleActivate}
             onCancel={() => setConfirm(null)}
           />
         )}
