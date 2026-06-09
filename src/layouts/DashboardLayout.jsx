@@ -110,7 +110,7 @@ const getMenuItems = (role, dashboardPath) => {
     // { text: "Bulk Student Upload",  icon: Upload,        path: "/school-admin/bulk-upload",        group: "Academics" },
     { text: "Fee Management",       icon: CreditCard,    path: "/school-admin/fees",               group: "Finance" },
     // { text: "Subscription Plan",    icon: MoneyOff,      path: "/school-admin/subscriptions",      group: "Finance" },
-    { text: "Results",              icon: FileText,      path: "/school-admin/results",            group: "Reports" },
+    // { text: "Results",              icon: FileText,      path: "/school-admin/results",            group: "Reports" },
     { text: "Reports",              icon: BarChart3,     path: "/school-admin/reports",            group: "Reports" },
     { text: "Announcements",        icon: Announcement,  path: "/school-admin/announcements",      group: "Comms" },
     { text: "Create Notification",  icon: Mail,          path: "/school-admin/create-notification",group: "Comms" },

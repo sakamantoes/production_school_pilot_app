@@ -41,9 +41,8 @@ const ProtectedRoute = () => {
       userRole === 'super_admin' ? '/super-admin/dashboard' :
       userRole === 'school_admin' ? '/school-admin/dashboard' :
       userRole === 'teacher' ? '/teacher/dashboard' :
-      userRole === 'student' ? '/student/dashboard' :
-      '/dashboard';
-    
+      userRole === 'student' ? '/student/dashboard'  
+      : '/'; // fallback to home if role is unknown
     return <Navigate to={dashboardPath} replace />;
   }
 

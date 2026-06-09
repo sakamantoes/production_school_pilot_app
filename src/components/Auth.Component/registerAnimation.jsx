@@ -26,6 +26,7 @@ import {
   Sparkles,
   Check,
 } from "lucide-react";
+import image from "../../assets/image.js";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -547,10 +548,10 @@ const RegisterAnimation = () => {
             initial={{ scale: 0, rotate: -10 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: "spring", stiffness: 200, damping: 18, delay: 0.1 }}
-            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 shadow-xl"
+            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4 shadow-xl overflow-hidden"
             style={{ background: "linear-gradient(135deg, #2563eb, #1d4ed8)" }}
           >
-            <GraduationCap className="w-8 h-8 text-white" />
+           <img src={image.Logo} alt="Logo" className="w-full h-full" />
           </motion.div>
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">
             Create your account

@@ -1,1112 +1,880 @@
-import React, { useState, useEffect } from 'react';
-import { classAPI, classArmAPI, subjectAPI, sessionAPI, termAPI } from '../../services/schoolApi';
+// pages/school/AcademicManagement.jsx
+// ── Same blue-indigo color palette kept exactly. UX/UI overhauled. ──────────
+// Changes: slide-in drawer replaces basic modal, rich tab bar with counts,
+// expandable class cards showing arms inline, stat cards, toast feedback,
+// animated transitions, better empty states, form validation with inline errors.
 
+import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import toast from 'react-hot-toast';
+import {
+  BookOpen, Grid3x3, FlaskConical, CalendarDays, Clock4,
+  Plus, RefreshCw, Edit2, Trash2, X, ChevronRight,
+  CheckCircle, Loader2, AlertCircle, Save, ChevronDown,
+  GraduationCap, Layers, BookMarked, Calendar, Timer,
+  Sparkles, ArrowRight,
+} from 'lucide-react';
+import {
+  classAPI, classArmAPI, subjectAPI, sessionAPI, termAPI,
+} from '../../services/schoolApi';
+
+// ─── helpers ────────────────────────────────────────────────────────────────
+const extractData = (res) => {
+  if (!res) return [];
+  if (Array.isArray(res)) return res;
+  if (res.data && Array.isArray(res.data)) return res.data;
+  if (res.data?.data && Array.isArray(res.data.data)) return res.data.data;
+  return [];
+};
+
+const TERM_LABELS = {
+  FIRST_TERM:  'First Term',
+  SECOND_TERM: 'Second Term',
+  THIRD_TERM:  'Third Term',
+};
+const termLabel = (v) => TERM_LABELS[v] || v;
+
+// ─── Tab config ──────────────────────────────────────────────────────────────
+const TABS = [
+  { id: 'classes',    label: 'Classes',    icon: GraduationCap, color: '#2563eb' },
+  { id: 'class-arms', label: 'Arms',       icon: Layers,        color: '#7c3aed' },
+  { id: 'subjects',   label: 'Subjects',   icon: BookMarked,    color: '#0891b2' },
+  { id: 'sessions',   label: 'Sessions',   icon: Calendar,      color: '#059669' },
+  { id: 'terms',      label: 'Terms',      icon: Timer,         color: '#d97706' },
+];
+
+// ─── Confirm Dialog ──────────────────────────────────────────────────────────
+const ConfirmDialog = ({ title, message, onConfirm, onCancel, loading }) => (
+  <div className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+    style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}>
+    <motion.div initial={{ scale: 0.93, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+      exit={{ scale: 0.93, opacity: 0 }}
+      className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-slate-200">
+      <div className="flex items-start gap-3 mb-5">
+        <div className="w-9 h-9 rounded-xl bg-rose-100 flex-shrink-0 flex items-center justify-center">
+          <AlertCircle className="w-4.5 h-4.5 text-rose-600" />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+          <p className="text-xs text-slate-500 mt-1 leading-relaxed">{message}</p>
+        </div>
+      </div>
+      <div className="flex gap-2 justify-end">
+        <button onClick={onCancel} disabled={loading}
+          className="px-4 py-2 text-xs font-bold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors">
+          Cancel
+        </button>
+        <button onClick={onConfirm} disabled={loading}
+          className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors flex items-center gap-1.5">
+          {loading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Delete
+        </button>
+      </div>
+    </motion.div>
+  </div>
+);
+
+// ─── Field primitives (light theme, blue focus ring) ─────────────────────────
+const Field = ({ label, error, required, children }) => (
+  <div className="flex flex-col gap-1.5">
+    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+      {label}{required && <span className="text-blue-600 ml-0.5">*</span>}
+    </label>
+    {children}
+    {error && (
+      <p className="text-[11px] text-rose-500 flex items-center gap-1">
+        <AlertCircle className="w-3 h-3" />{error}
+      </p>
+    )}
+  </div>
+);
+
+const Input = ({ error, ...props }) => (
+  <input {...props}
+    className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all text-slate-800 placeholder:text-slate-300
+      focus:border-blue-500 focus:bg-white bg-slate-50
+      ${error ? 'border-rose-400 bg-rose-50' : 'border-slate-200 hover:border-slate-300'}`}
+  />
+);
+
+const Select = ({ error, children, ...props }) => (
+  <div className="relative">
+    <select {...props}
+      className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none appearance-none transition-all text-slate-800 bg-slate-50
+        focus:border-blue-500 focus:bg-white
+        ${error ? 'border-rose-400' : 'border-slate-200 hover:border-slate-300'}`}>
+      {children}
+    </select>
+    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+  </div>
+);
+
+const Toggle = ({ checked, onChange, label, sub }) => (
+  <label className={`flex items-center gap-3 p-3.5 rounded-xl cursor-pointer transition-colors border-2
+    ${checked ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-slate-50 hover:border-slate-300'}`}>
+    <div className="relative w-10 h-5 flex-shrink-0" onClick={onChange}>
+      <div className={`w-10 h-5 rounded-full transition-colors ${checked ? 'bg-blue-600' : 'bg-slate-300'}`} />
+      <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform"
+        style={{ transform: checked ? 'translateX(20px)' : 'translateX(0)' }} />
+    </div>
+    <div>
+      <p className="text-xs font-bold text-slate-700">{label}</p>
+      {sub && <p className="text-[11px] text-slate-400">{sub}</p>}
+    </div>
+  </label>
+);
+
+// ─── Slide-in Drawer ─────────────────────────────────────────────────────────
+const Drawer = ({ title, subtitle, icon: Icon, accentColor, onClose, onSave, saveLabel, saving, children }) => (
+  <div className="fixed inset-0 z-[60] flex items-center justify-end"
+    style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}>
+    <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
+      transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+      className="h-full w-full max-w-md flex flex-col bg-white shadow-2xl"
+      style={{ borderLeft: '1px solid #e2e8f0' }}>
+
+      {/* Header */}
+      <div className="flex-shrink-0 flex items-center justify-between px-6 py-5 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
+            style={{ background: `${accentColor}15` }}>
+            <Icon className="w-4.5 h-4.5" style={{ color: accentColor }} />
+          </div>
+          <div>
+            <h2 className="font-bold text-slate-900 text-sm">{title}</h2>
+            {subtitle && <p className="text-[11px] text-slate-400 mt-0.5">{subtitle}</p>}
+          </div>
+        </div>
+        <button onClick={onClose}
+          className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        {children}
+      </div>
+
+      {/* Footer */}
+      <div className="flex-shrink-0 flex gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/60">
+        <button onClick={onClose}
+          className="flex-1 py-2.5 rounded-xl text-sm font-bold text-slate-600 border border-slate-200 hover:bg-white transition-colors">
+          Cancel
+        </button>
+        <button onClick={onSave} disabled={saving}
+          className="flex-1 py-2.5 rounded-xl text-sm font-black text-white flex items-center justify-center gap-2 transition-all disabled:opacity-60"
+          style={{ background: saving ? `${accentColor}80` : accentColor }}>
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          {saving ? 'Saving…' : (saveLabel || 'Save')}
+        </button>
+      </div>
+    </motion.div>
+  </div>
+);
+
+// ─── Empty state ─────────────────────────────────────────────────────────────
+const EmptyState = ({ icon: Icon, label, sub, onAdd, accentColor }) => (
+  <div className="flex flex-col items-center justify-center py-20 text-center">
+    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+      style={{ background: `${accentColor}12` }}>
+      <Icon className="w-8 h-8" style={{ color: `${accentColor}60` }} />
+    </div>
+    <h3 className="text-sm font-bold text-slate-700 mb-1">{label}</h3>
+    <p className="text-xs text-slate-400 mb-5">{sub}</p>
+    <button onClick={onAdd}
+      className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white rounded-xl transition-colors shadow-sm"
+      style={{ background: accentColor }}>
+      <Plus className="w-3.5 h-3.5" /> Add First
+    </button>
+  </div>
+);
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═════════════════════════════════════════════════════════════════════════════
 const AcademicManagement = () => {
-  // State for active tab
-  const [activeTab, setActiveTab] = useState('classes');
-  
-  // State for modals
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedItem, setSelectedItem] = useState(null);
-  
-  // State for data
-  const [classes, setClasses] = useState([]);
-  const [classArms, setClassArms] = useState([]);
-  const [subjects, setSubjects] = useState([]);
-  const [sessions, setSessions] = useState([]);
-  const [terms, setTerms] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [activeTab,  setActiveTab]  = useState('classes');
+  const [classes,    setClasses]    = useState([]);
+  const [classArms,  setClassArms]  = useState([]);
+  const [subjects,   setSubjects]   = useState([]);
+  const [sessions,   setSessions]   = useState([]);
+  const [terms,      setTerms]      = useState([]);
+  const [loading,    setLoading]    = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  
-  // Form states
-  const [classForm, setClassForm] = useState({ name: '', description: '' });
-  const [classArmForm, setClassArmForm] = useState({ name: '', classId: '' });
-  const [subjectForm, setSubjectForm] = useState({ name: '', code: '', description: '' });
-  const [sessionForm, setSessionForm] = useState({ name: '', startDate: '', endDate: '', isCurrent: false });
-  const [termForm, setTermForm] = useState({ name: '', sessionId: '', startDate: '', endDate: '', isCurrent: false });
 
-  // Helper function to convert term name to enum
-  const getTermEnumValue = (termName) => {
-    const termMap = {
-      'first': 'FIRST_TERM',
-      '1st': 'FIRST_TERM',
-      'second': 'SECOND_TERM', 
-      '2nd': 'SECOND_TERM',
-      'third': 'THIRD_TERM',
-      '3rd': 'THIRD_TERM'
-    };
-    
-    const lowerName = termName.toLowerCase();
-    for (const [key, value] of Object.entries(termMap)) {
-      if (lowerName.includes(key)) {
-        return value;
-      }
-    }
-    return 'FIRST_TERM';
-  };
+  // Drawer state
+  const [drawer,   setDrawer]   = useState(null); // 'create' | 'edit'
+  const [selected, setSelected] = useState(null);
+  const [saving,   setSaving]   = useState(false);
+  const [confirm,  setConfirm]  = useState(null); // { type, id, name }
+  const [deleting, setDeleting] = useState(false);
 
-  // Helper function to convert enum to display name
-  const getTermDisplayName = (enumValue) => {
-    const displayMap = {
-      'FIRST_TERM': 'First Term',
-      'SECOND_TERM': 'Second Term',
-      'THIRD_TERM': 'Third Term'
-    };
-    return displayMap[enumValue] || enumValue;
-  };
+  // Inline errors
+  const [errors, setErrors] = useState({});
 
-  // Fetch data based on active tab
-  useEffect(() => {
-    fetchData();
-  }, [activeTab]);
+  // Form state — one object per tab
+  const [classForm,   setClassForm]   = useState({ name: '' });
+  const [armForm,     setArmForm]     = useState({ name: '', classId: '' });
+  const [subjectForm, setSubjectForm] = useState({ name: '' });
+  const [sessionForm, setSessionForm] = useState({ name: '', isCurrent: false });
+  const [termForm,    setTermForm]    = useState({ name: '', sessionId: '', isCurrent: false });
 
-  const fetchData = async () => {
-    setLoading(true);
+  // Expanded class cards
+  const [expandedClass, setExpandedClass] = useState(null);
+
+  const tabCfg = TABS.find(t => t.id === activeTab) || TABS[0];
+
+  // ── Fetchers ───────────────────────────────────────────────
+  const fetchAll = useCallback(async (showRefresh = false) => {
+    showRefresh ? setRefreshing(true) : setLoading(true);
     try {
-      switch(activeTab) {
-        case 'classes':
-          await fetchClasses();
-          break;
-        case 'class-arms':
-          await fetchClassArms();
-          break;
-        case 'subjects':
-          await fetchSubjects();
-          break;
-        case 'sessions':
-          await fetchSessions();
-          break;
-        case 'terms':
-          await fetchTerms();
-          break;
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
+      // Always fetch classes (arms are embedded inside classes)
+      const [cr, sr, sesr, tr] = await Promise.allSettled([
+        classAPI.getClasses(),
+        subjectAPI.getSubjects(),
+        sessionAPI.getSessions(),
+        termAPI.getTerms(),
+      ]);
+      const cls  = cr.status  === 'fulfilled' ? extractData(cr.value)  : [];
+      const subs = sr.status  === 'fulfilled' ? extractData(sr.value)  : [];
+      const sess = sesr.status=== 'fulfilled' ? extractData(sesr.value): [];
+      const trms = tr.status  === 'fulfilled' ? extractData(tr.value)  : [];
+
+      setClasses(cls);
+      setSubjects(subs);
+      setSessions(sess);
+      setTerms(trms);
+
+      // Derive arms from classes
+      const allArms = cls.flatMap(c =>
+        (c.arms || []).map(a => ({ ...a, className: c.name, classId: c.id }))
+      );
+      setClassArms(allArms);
+
+      if (showRefresh) toast.success('Data refreshed');
+    } catch {
+      toast.error('Failed to load data');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
+  }, []);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // ── Drawer helpers ─────────────────────────────────────────
+  const openCreate = () => {
+    setSelected(null);
+    setErrors({});
+    resetForm();
+    setDrawer('create');
   };
 
-  const fetchClasses = async () => {
-    try {
-      const response = await classAPI.getClasses();
-      setClasses(response.data || []);
-    } catch (error) {
-      console.error('Error fetching classes:', error);
-      alert('Failed to fetch classes');
+  const openEdit = (item) => {
+    setSelected(item);
+    setErrors({});
+    populateForm(item);
+    setDrawer('edit');
+  };
+
+  const closeDrawer = () => { setDrawer(null); setSelected(null); setErrors({}); };
+
+  const resetForm = () => {
+    setClassForm({ name: '' });
+    setArmForm({ name: '', classId: '' });
+    setSubjectForm({ name: '' });
+    setSessionForm({ name: '', isCurrent: false });
+    setTermForm({ name: '', sessionId: '', isCurrent: false });
+  };
+
+  const populateForm = (item) => {
+    switch (activeTab) {
+      case 'classes':    setClassForm({ name: item.name || '' }); break;
+      case 'class-arms': setArmForm({ name: item.name || '', classId: item.classId || '' }); break;
+      case 'subjects':   setSubjectForm({ name: item.name || '' }); break;
+      case 'sessions':   setSessionForm({ name: item.name || '', isCurrent: item.isCurrent || false }); break;
+      case 'terms':      setTermForm({ name: item.name || '', sessionId: item.sessionId || '', isCurrent: item.isCurrent || false }); break;
     }
   };
 
-  const fetchClassArms = async () => {
+  // ── Validate ───────────────────────────────────────────────
+  const validate = () => {
+    const e = {};
+    switch (activeTab) {
+      case 'classes':
+        if (!classForm.name.trim()) e.name = 'Class name is required';
+        break;
+      case 'class-arms':
+        if (!armForm.classId) e.classId = 'Select a class';
+        if (!armForm.name.trim()) e.name = 'Arm name is required';
+        break;
+      case 'subjects':
+        if (!subjectForm.name.trim()) e.name = 'Subject name is required';
+        break;
+      case 'sessions':
+        if (!sessionForm.name.trim()) e.name = 'Session name is required';
+        break;
+      case 'terms':
+        if (!termForm.sessionId) e.sessionId = 'Select a session';
+        if (!termForm.name) e.name = 'Select a term';
+        break;
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  // ── Save ───────────────────────────────────────────────────
+  const handleSave = async () => {
+    if (!validate()) return;
+    setSaving(true);
     try {
-      // First fetch all classes with their arms
-      const response = await classAPI.getClasses();
-      setClasses(response.data || []);
-      
-      // Extract all arms from classes
-      const allArms = [];
-      response.data.forEach(classItem => {
-        if (classItem.arms && classItem.arms.length > 0) {
-          classItem.arms.forEach(arm => {
-            allArms.push({
-              ...arm,
-              className: classItem.name
-            });
-          });
+      if (drawer === 'create') {
+        switch (activeTab) {
+          case 'classes':    await classAPI.createClass(classForm);           break;
+          case 'class-arms': await classArmAPI.createClassArm(armForm);       break;
+          case 'subjects':   await subjectAPI.createSubject(subjectForm);     break;
+          case 'sessions':   await sessionAPI.createSession(sessionForm);     break;
+          case 'terms':      await termAPI.createTerm(termForm);              break;
         }
-      });
-      setClassArms(allArms);
-    } catch (error) {
-      console.error('Error fetching class arms:', error);
-      alert('Failed to fetch class arms');
-    }
-  };
-
-  const fetchSubjects = async () => {
-    try {
-      const response = await subjectAPI.getSubjects();
-      setSubjects(response.data || []);
-    } catch (error) {
-      console.error('Error fetching subjects:', error);
-      alert('Failed to fetch subjects');
-    }
-  };
-
-  const fetchSessions = async () => {
-    try {
-      const response = await sessionAPI.getSessions();
-      setSessions(response.data || []);
-    } catch (error) {
-      console.error('Error fetching sessions:', error);
-      alert('Failed to fetch sessions');
-    }
-  };
-
-  const fetchTerms = async () => {
-    try {
-      const response = await termAPI.getTerms();
-      setTerms(response.data || []);
-    } catch (error) {
-      console.error('Error fetching terms:', error);
-      alert('Failed to fetch terms');
-    }
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await fetchData();
-  };
-
-  // CRUD Operations for Classes
-  const handleCreateClass = async () => {
-    if (!classForm.name) {
-      alert('Class name is required');
-      return;
-    }
-    try {
-      await classAPI.createClass(classForm);
-      alert('Class created successfully');
-      setShowCreateModal(false);
-      setClassForm({ name: '', description: '' });
-      fetchData();
-    } catch (error) {
-      console.error('Error creating class:', error);
-      alert('Failed to create class');
-    }
-  };
-
-  const handleUpdateClass = async () => {
-    if (!selectedItem) return;
-    try {
-      await classAPI.updateClass(selectedItem.id, classForm);
-      alert('Class updated successfully');
-      setShowEditModal(false);
-      setSelectedItem(null);
-      setClassForm({ name: '', description: '' });
-      fetchData();
-    } catch (error) {
-      console.error('Error updating class:', error);
-      alert('Failed to update class');
-    }
-  };
-
-  const handleDeleteClass = async (classId) => {
-    if (window.confirm('Are you sure you want to delete this class? This will also delete all class arms.')) {
-      try {
-        await classAPI.deleteClass(classId);
-        alert('Class deleted successfully');
-        fetchData();
-      } catch (error) {
-        console.error('Error deleting class:', error);
-        alert('Failed to delete class');
+        toast.success(`${tabCfg.label.replace(/s$/, '')} created`);
+      } else {
+        switch (activeTab) {
+          case 'classes':    await classAPI.updateClass(selected.id, classForm);          break;
+          case 'class-arms': await classArmAPI.updateClassArm(selected.id, armForm);      break;
+          case 'subjects':   await subjectAPI.updateSubject(selected.id, subjectForm);    break;
+          case 'sessions':   await sessionAPI.updateSession(selected.id, sessionForm);    break;
+          case 'terms':      await termAPI.updateTerm(selected.id, termForm);             break;
+        }
+        toast.success(`${tabCfg.label.replace(/s$/, '')} updated`);
       }
+      closeDrawer();
+      fetchAll();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Save failed');
+    } finally {
+      setSaving(false);
     }
   };
 
-  // CRUD Operations for Class Arms
-  const handleCreateClassArm = async () => {
-    if (!classArmForm.name || !classArmForm.classId) {
-      alert('Class arm name and class are required');
-      return;
-    }
+  // ── Delete ─────────────────────────────────────────────────
+  const triggerDelete = (type, id, name) => setConfirm({ type, id, name });
+
+  const handleDelete = async () => {
+    if (!confirm) return;
+    setDeleting(true);
     try {
-      await classArmAPI.createClassArm(classArmForm);
-      alert('Class arm created successfully');
-      setShowCreateModal(false);
-      setClassArmForm({ name: '', classId: '' });
-      fetchData();
-    } catch (error) {
-      console.error('Error creating class arm:', error);
-      alert('Failed to create class arm');
-    }
-  };
-
-  const handleUpdateClassArm = async () => {
-    if (!selectedItem) return;
-    try {
-      await classArmAPI.updateClassArm(selectedItem.id, classArmForm);
-      alert('Class arm updated successfully');
-      setShowEditModal(false);
-      setSelectedItem(null);
-      setClassArmForm({ name: '', classId: '' });
-      fetchData();
-    } catch (error) {
-      console.error('Error updating class arm:', error);
-      alert('Failed to update class arm');
-    }
-  };
-
-  const handleDeleteClassArm = async (armId) => {
-    if (window.confirm('Are you sure you want to delete this class arm?')) {
-      try {
-        await classArmAPI.deleteClassArm(armId);
-        alert('Class arm deleted successfully');
-        fetchData();
-      } catch (error) {
-        console.error('Error deleting class arm:', error);
-        alert('Failed to delete class arm');
+      switch (confirm.type) {
+        case 'classes':    await classAPI.deleteClass(confirm.id);          break;
+        case 'class-arms': await classArmAPI.deleteClassArm(confirm.id);    break;
+        case 'subjects':   await subjectAPI.deleteSubject(confirm.id);      break;
       }
+      toast.success('Deleted successfully');
+      setConfirm(null);
+      fetchAll();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Delete failed');
+    } finally {
+      setDeleting(false);
     }
   };
 
-  // CRUD Operations for Subjects
-  const handleCreateSubject = async () => {
-    if (!subjectForm.name || !subjectForm.code) {
-      alert('Subject name and code are required');
-      return;
-    }
-    try {
-      await subjectAPI.createSubject(subjectForm);
-      alert('Subject created successfully');
-      setShowCreateModal(false);
-      setSubjectForm({ name: '', code: '', description: '' });
-      fetchSubjects();
-    } catch (error) {
-      console.error('Error creating subject:', error);
-      alert('Failed to create subject');
-    }
-  };
+  // ── Stats ──────────────────────────────────────────────────
+  const totalArms     = classArms.length;
+  const currentSess   = sessions.find(s => s.isCurrent);
+  const currentTerm   = terms.find(t => t.isCurrent);
 
-  const handleUpdateSubject = async () => {
-    if (!selectedItem) return;
-    try {
-      await subjectAPI.updateSubject(selectedItem.id, subjectForm);
-      alert('Subject updated successfully');
-      setShowEditModal(false);
-      setSelectedItem(null);
-      setSubjectForm({ name: '', code: '', description: '' });
-      fetchSubjects();
-    } catch (error) {
-      console.error('Error updating subject:', error);
-      alert('Failed to update subject');
-    }
-  };
-
-  const handleDeleteSubject = async (subjectId) => {
-    if (window.confirm('Are you sure you want to delete this subject?')) {
-      try {
-        await subjectAPI.deleteSubject(subjectId);
-        alert('Subject deleted successfully');
-        fetchSubjects();
-      } catch (error) {
-        console.error('Error deleting subject:', error);
-        alert('Failed to delete subject');
-      }
-    }
-  };
-
-  // CRUD Operations for Sessions
-  const handleCreateSession = async () => {
-    if (!sessionForm.name || !sessionForm.startDate || !sessionForm.endDate) {
-      alert('Session name, start date, and end date are required');
-      return;
-    }
-    try {
-      await sessionAPI.createSession(sessionForm);
-      alert('Session created successfully');
-      setShowCreateModal(false);
-      setSessionForm({ name: '', startDate: '', endDate: '', isCurrent: false });
-      fetchSessions();
-    } catch (error) {
-      console.error('Error creating session:', error);
-      alert('Failed to create session');
-    }
-  };
-
-  const handleUpdateSession = async () => {
-    if (!selectedItem) return;
-    try {
-      await sessionAPI.updateSession(selectedItem.id, sessionForm);
-      alert('Session updated successfully');
-      setShowEditModal(false);
-      setSelectedItem(null);
-      setSessionForm({ name: '', startDate: '', endDate: '', isCurrent: false });
-      fetchSessions();
-    } catch (error) {
-      console.error('Error updating session:', error);
-      alert('Failed to update session');
-    }
-  };
-
-  // CRUD Operations for Terms
-  const handleCreateTerm = async () => {
-    if (!termForm.name || !termForm.sessionId || !termForm.startDate || !termForm.endDate) {
-      alert('All term fields are required');
-      return;
-    }
-    
-    const termData = {
-      ...termForm,
-      name: getTermEnumValue(termForm.name)
-    };
-    
-    try {
-      await termAPI.createTerm(termData);
-      alert('Term created successfully');
-      setShowCreateModal(false);
-      setTermForm({ name: '', sessionId: '', startDate: '', endDate: '', isCurrent: false });
-      fetchTerms();
-    } catch (error) {
-      console.error('Error creating term:', error);
-      alert('Failed to create term');
-    }
-  };
-
-  const handleUpdateTerm = async () => {
-    if (!selectedItem) return;
-    
-    const termData = {
-      ...termForm,
-      name: getTermEnumValue(termForm.name)
-    };
-    
-    try {
-      await termAPI.updateTerm(selectedItem.id, termData);
-      alert('Term updated successfully');
-      setShowEditModal(false);
-      setSelectedItem(null);
-      setTermForm({ name: '', sessionId: '', startDate: '', endDate: '', isCurrent: false });
-      fetchTerms();
-    } catch (error) {
-      console.error('Error updating term:', error);
-      alert('Failed to update term');
-    }
-  };
-
-  const openCreateModal = () => {
-    setSelectedItem(null);
-    resetForms();
-    setShowCreateModal(true);
-  };
-
-  const openEditModal = (item) => {
-    setSelectedItem(item);
-    setShowEditModal(true);
-    
-    switch(activeTab) {
-      case 'classes':
-        setClassForm({ name: item.name, description: item.description || '' });
-        break;
-      case 'class-arms':
-        setClassArmForm({ name: item.name, classId: item.classId });
-        break;
-      case 'subjects':
-        setSubjectForm({ name: item.name, code: item.code, description: item.description || '' });
-        break;
-      case 'sessions':
-        setSessionForm({ 
-          name: item.name, 
-          startDate: item.startDate.split('T')[0], 
-          endDate: item.endDate.split('T')[0], 
-          isCurrent: item.isCurrent 
-        });
-        break;
-      case 'terms':
-        setTermForm({ 
-          name: getTermDisplayName(item.name),
-          sessionId: item.sessionId, 
-          startDate: item.startDate.split('T')[0], 
-          endDate: item.endDate.split('T')[0], 
-          isCurrent: item.isCurrent 
-        });
-        break;
-    }
-  };
-
-  const resetForms = () => {
-    setClassForm({ name: '', description: '' });
-    setClassArmForm({ name: '', classId: '' });
-    setSubjectForm({ name: '', code: '', description: '' });
-    setSessionForm({ name: '', startDate: '', endDate: '', isCurrent: false });
-    setTermForm({ name: '', sessionId: '', startDate: '', endDate: '', isCurrent: false });
-  };
-
-  const getModalTitle = () => {
-    const action = selectedItem ? 'Edit' : 'Create';
-    switch(activeTab) {
-      case 'classes': return `${action} Class`;
-      case 'class-arms': return `${action} Class Arm`;
-      case 'subjects': return `${action} Subject`;
-      case 'sessions': return `${action} Session`;
-      case 'terms': return `${action} Term`;
-      default: return `${action} Item`;
-    }
-  };
-
-  const renderModalForm = () => {
-    switch(activeTab) {
+  // ── Drawer form content per tab ────────────────────────────
+  const renderDrawerForm = () => {
+    switch (activeTab) {
       case 'classes':
         return (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Class Name *</label>
-              <input
-                type="text"
-                value={classForm.name}
-                onChange={(e) => setClassForm({ ...classForm, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., Form 1, Grade 10"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea
-                value={classForm.description}
-                onChange={(e) => setClassForm({ ...classForm, description: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows="3"
-                placeholder="Optional description"
-              />
-            </div>
-          </div>
+          <Field label="Class Name" required error={errors.name}>
+            <Input value={classForm.name} onChange={e => setClassForm({ name: e.target.value })}
+              placeholder="e.g. JSS 1, Form 5, Grade 10" error={errors.name} autoFocus />
+          </Field>
         );
-      
+
       case 'class-arms':
         return (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Class *</label>
-              <select
-                value={classArmForm.classId}
-                onChange={(e) => setClassArmForm({ ...classArmForm, classId: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select Class</option>
-                {classes.map(cls => (
-                  <option key={cls.id} value={cls.id}>{cls.name}</option>
+          <>
+            <Field label="Parent Class" required error={errors.classId}>
+              <Select value={armForm.classId}
+                onChange={e => setArmForm(p => ({ ...p, classId: e.target.value }))} error={errors.classId}>
+                <option value="">Select class…</option>
+                {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+            </Field>
+            <Field label="Arm Name" required error={errors.name}>
+              <Select value={armForm.name}
+                onChange={e => setArmForm(p => ({ ...p, name: e.target.value }))} error={errors.name}>
+                <option value="">Select arm…</option>
+                {['A','B','C','D','E','F','G','H','I'].map(n => (
+                  <option key={n} value={n}>{n}</option>
                 ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Arm Name *</label>
-              <input
-                type="text"
-                value={classArmForm.name}
-                onChange={(e) => setClassArmForm({ ...classArmForm, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., A, B, Blue, Red"
-              />
-            </div>
-          </div>
+              </Select>
+            </Field>
+          </>
         );
-      
+
       case 'subjects':
         return (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Subject Name *</label>
-              <input
-                type="text"
-                value={subjectForm.name}
-                onChange={(e) => setSubjectForm({ ...subjectForm, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., Mathematics, English"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Subject Code *</label>
-              <input
-                type="text"
-                value={subjectForm.code}
-                onChange={(e) => setSubjectForm({ ...subjectForm, code: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., MATH101, ENG102"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-              <textarea
-                value={subjectForm.description}
-                onChange={(e) => setSubjectForm({ ...subjectForm, description: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows="3"
-                placeholder="Optional description"
-              />
-            </div>
-          </div>
+          <Field label="Subject Name" required error={errors.name}>
+            <Input value={subjectForm.name} onChange={e => setSubjectForm({ name: e.target.value })}
+              placeholder="e.g. Mathematics, English Language" error={errors.name} autoFocus />
+          </Field>
         );
-      
+
       case 'sessions':
         return (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Session Name *</label>
-              <input
-                type="text"
-                value={sessionForm.name}
-                onChange={(e) => setSessionForm({ ...sessionForm, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., 2024-2025"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
-                <input
-                  type="date"
-                  value={sessionForm.startDate}
-                  onChange={(e) => setSessionForm({ ...sessionForm, startDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
-                <input
-                  type="date"
-                  value={sessionForm.endDate}
-                  onChange={(e) => setSessionForm({ ...sessionForm, endDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={sessionForm.isCurrent}
-                  onChange={(e) => setSessionForm({ ...sessionForm, isCurrent: e.target.checked })}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-700">Set as current session</span>
-              </label>
-            </div>
-          </div>
+          <>
+            <Field label="Session Name" required error={errors.name}>
+              <Input value={sessionForm.name} onChange={e => setSessionForm(p => ({ ...p, name: e.target.value }))}
+                placeholder="e.g. 2024/2025" error={errors.name} autoFocus />
+            </Field>
+            <Toggle
+              checked={sessionForm.isCurrent}
+              onChange={() => setSessionForm(p => ({ ...p, isCurrent: !p.isCurrent }))}
+              label="Set as Current Session"
+              sub="Marks this as the active academic session — deactivates any current one"
+            />
+          </>
         );
-      
+
       case 'terms':
         return (
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Session *</label>
-              <select
-                value={termForm.sessionId}
-                onChange={(e) => setTermForm({ ...termForm, sessionId: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select Session</option>
-                {sessions.map(session => (
-                  <option key={session.id} value={session.id}>{session.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Term Name *</label>
-              <select
-                value={termForm.name}
-                onChange={(e) => setTermForm({ ...termForm, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Select Term</option>
+          <>
+            <Field label="Session" required error={errors.sessionId}>
+              <Select value={termForm.sessionId}
+                onChange={e => setTermForm(p => ({ ...p, sessionId: e.target.value }))} error={errors.sessionId}>
+                <option value="">Select session…</option>
+                {sessions.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </Select>
+            </Field>
+            <Field label="Term" required error={errors.name}>
+              <Select value={termForm.name}
+                onChange={e => setTermForm(p => ({ ...p, name: e.target.value }))} error={errors.name}>
+                <option value="">Select term…</option>
                 <option value="FIRST_TERM">First Term</option>
                 <option value="SECOND_TERM">Second Term</option>
                 <option value="THIRD_TERM">Third Term</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
-                <input
-                  type="date"
-                  value={termForm.startDate}
-                  onChange={(e) => setTermForm({ ...termForm, startDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
-                <input
-                  type="date"
-                  value={termForm.endDate}
-                  onChange={(e) => setTermForm({ ...termForm, endDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={termForm.isCurrent}
-                  onChange={(e) => setTermForm({ ...termForm, isCurrent: e.target.checked })}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-700">Set as current term</span>
-              </label>
-            </div>
-          </div>
+              </Select>
+            </Field>
+            <Toggle
+              checked={termForm.isCurrent}
+              onChange={() => setTermForm(p => ({ ...p, isCurrent: !p.isCurrent }))}
+              label="Set as Current Term"
+              sub="Marks this as the active term for the selected session"
+            />
+          </>
         );
-      
-      default:
-        return null;
+
+      default: return null;
     }
   };
 
-  const handleSubmit = () => {
-    if (selectedItem) {
-      switch(activeTab) {
-        case 'classes': handleUpdateClass(); break;
-        case 'class-arms': handleUpdateClassArm(); break;
-        case 'subjects': handleUpdateSubject(); break;
-        case 'sessions': handleUpdateSession(); break;
-        case 'terms': handleUpdateTerm(); break;
-      }
-    } else {
-      switch(activeTab) {
-        case 'classes': handleCreateClass(); break;
-        case 'class-arms': handleCreateClassArm(); break;
-        case 'subjects': handleCreateSubject(); break;
-        case 'sessions': handleCreateSession(); break;
-        case 'terms': handleCreateTerm(); break;
-      }
-    }
-  };
-
-  const renderClassesTab = () => (
-    <div className="space-y-6">
-      {classes.map((classItem) => (
-        <div key={classItem.id} className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h3 className="text-xl font-semibold text-gray-900">{classItem.name}</h3>
-              {classItem.description && (
-                <p className="text-gray-600 mt-1">{classItem.description}</p>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => openEditModal(classItem)}
-                className="text-blue-600 hover:text-blue-900"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-              <button
-                onClick={() => handleDeleteClass(classItem.id)}
-                className="text-red-600 hover:text-red-900"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          
-          {classItem.arms && classItem.arms.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium text-gray-700 mb-2">Class Arms:</h4>
-              <div className="flex flex-wrap gap-2">
-                {classItem.arms.map((arm) => (
-                  <div key={arm.id} className="flex items-center gap-2 bg-gray-100 rounded-lg px-3 py-1">
-                    <span className="text-sm text-gray-700">{arm.name}</span>
-                    <button
-                      onClick={() => handleDeleteClassArm(arm.id)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
+  // ── Tab content ────────────────────────────────────────────
+  const renderClasses = () => (
+    <div className="space-y-3">
+      {classes.length === 0
+        ? <EmptyState icon={GraduationCap} label="No classes yet" sub="Create your school's class structure" onAdd={openCreate} accentColor="#2563eb" />
+        : classes.map((cls, i) => (
+          <motion.div key={cls.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04 }}
+            className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            {/* Class header row */}
+            <div className="flex items-center gap-4 px-5 py-4">
+              <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                <GraduationCap className="w-4.5 h-4.5 text-blue-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-slate-800">{cls.name}</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {(cls.arms||[]).length} arm{(cls.arms||[]).length !== 1 ? 's' : ''}
+                </p>
+              </div>
+              {/* Arms inline chips */}
+              <div className="hidden sm:flex items-center gap-1.5 flex-wrap max-w-xs justify-end">
+                {(cls.arms || []).map(arm => (
+                  <span key={arm.id}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 group">
+                    {arm.name}
+                    <button onClick={() => triggerDelete('class-arms', arm.id, `${cls.name} ${arm.name}`)}
+                      className="ml-0.5 text-indigo-300 hover:text-rose-500 transition-colors">
+                      <X className="w-2.5 h-2.5" />
                     </button>
-                  </div>
+                  </span>
                 ))}
               </div>
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-
-  const renderClassArmsTab = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {classArms.map((arm) => (
-        <div key={arm.id} className="bg-white rounded-lg shadow p-4">
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <h3 className="font-semibold text-gray-900">{arm.name}</h3>
-              <p className="text-sm text-gray-500">Class: {arm.className}</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => openEditModal(arm)}
-                className="text-blue-600 hover:text-blue-900"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-              <button
-                onClick={() => handleDeleteClassArm(arm.id)}
-                className="text-red-600 hover:text-red-900"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
-      {classArms.length === 0 && (
-        <div className="col-span-full text-center py-12 text-gray-500">
-          No class arms found. Create your first class arm!
-        </div>
-      )}
-    </div>
-  );
-
-  const renderSubjectsTab = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {subjects.map((subject) => (
-        <div key={subject.id} className="bg-white rounded-lg shadow p-4">
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <h3 className="font-semibold text-gray-900">{subject.name}</h3>
-              <p className="text-sm text-gray-500">Code: {subject.code}</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => openEditModal(subject)}
-                className="text-blue-600 hover:text-blue-900"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-              <button
-                onClick={() => handleDeleteSubject(subject.id)}
-                className="text-red-600 hover:text-red-900"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            </div>
-          </div>
-          {subject.description && (
-            <p className="text-sm text-gray-600 mt-2">{subject.description}</p>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-
-  const renderSessionsTab = () => (
-    <div className="space-y-4">
-      {sessions.map((session) => (
-        <div key={session.id} className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-lg font-semibold text-gray-900">{session.name}</h3>
-                {session.isCurrent && (
-                  <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Current</span>
+              {/* Actions */}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button onClick={() => openEdit(cls)} title="Edit"
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all">
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={() => triggerDelete('classes', cls.id, cls.name)} title="Delete"
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+                {(cls.arms||[]).length > 0 && (
+                  <button onClick={() => setExpandedClass(expandedClass === cls.id ? null : cls.id)}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all sm:hidden">
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${expandedClass === cls.id ? 'rotate-180' : ''}`} />
+                  </button>
                 )}
               </div>
-              <p className="text-sm text-gray-600">
-                {new Date(session.startDate).toLocaleDateString()} - {new Date(session.endDate).toLocaleDateString()}
-              </p>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => openEditModal(session)}
-                className="text-blue-600 hover:text-blue-900"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      ))}
+            {/* Mobile: expanded arms */}
+            <AnimatePresence>
+              {expandedClass === cls.id && (
+                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }} className="overflow-hidden sm:hidden">
+                  <div className="px-5 pb-4 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+                    {(cls.arms||[]).map(arm => (
+                      <span key={arm.id} className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+                        {arm.name}
+                        <button onClick={() => triggerDelete('class-arms', arm.id, `${cls.name} ${arm.name}`)}
+                          className="ml-0.5 text-indigo-300 hover:text-rose-500 transition-colors">
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        ))
+      }
     </div>
   );
 
-  const renderTermsTab = () => (
-    <div className="space-y-4">
-      {terms.map((term) => (
-        <div key={term.id} className="bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-start">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <h3 className="text-lg font-semibold text-gray-900">{getTermDisplayName(term.name)}</h3>
-                {term.isCurrent && (
-                  <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">Current</span>
-                )}
-              </div>
-              <p className="text-sm text-gray-600 mb-1">
-                Session: {term.session?.name || 'N/A'}
-              </p>
-              <p className="text-sm text-gray-600">
-                {new Date(term.startDate).toLocaleDateString()} - {new Date(term.endDate).toLocaleDateString()}
-              </p>
+  const renderArms = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {classArms.length === 0
+        ? <div className="col-span-full"><EmptyState icon={Layers} label="No arms yet" sub="Add arms to your existing classes" onAdd={openCreate} accentColor="#7c3aed" /></div>
+        : classArms.map((arm, i) => (
+          <motion.div key={arm.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04 }}
+            className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3 group">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+              <span className="text-purple-700 font-black text-sm">{arm.name}</span>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => openEditModal(term)}
-                className="text-blue-600 hover:text-blue-900"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                </svg>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-slate-800 text-sm">{arm.className} — {arm.name}</p>
+              <p className="text-[11px] text-slate-400">Class Arm</p>
+            </div>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => openEdit(arm)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all">
+                <Edit2 className="w-3 h-3" />
+              </button>
+              <button onClick={() => triggerDelete('class-arms', arm.id, `${arm.className} ${arm.name}`)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all">
+                <Trash2 className="w-3 h-3" />
               </button>
             </div>
-          </div>
-        </div>
-      ))}
+          </motion.div>
+        ))
+      }
+    </div>
+  );
+
+  const renderSubjects = () => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {subjects.length === 0
+        ? <div className="col-span-full"><EmptyState icon={BookMarked} label="No subjects yet" sub="Define the subjects taught at this school" onAdd={openCreate} accentColor="#0891b2" /></div>
+        : subjects.map((sub, i) => (
+          <motion.div key={sub.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04 }}
+            className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3 group">
+            <div className="w-10 h-10 rounded-xl bg-cyan-100 flex items-center justify-center flex-shrink-0">
+              <BookMarked className="w-4.5 h-4.5 text-cyan-700" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-slate-800 text-sm truncate">{sub.name}</p>
+              <p className="text-[11px] text-slate-400">Subject</p>
+            </div>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => openEdit(sub)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all">
+                <Edit2 className="w-3 h-3" />
+              </button>
+              <button onClick={() => triggerDelete('subjects', sub.id, sub.name)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all">
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          </motion.div>
+        ))
+      }
+    </div>
+  );
+
+  const renderSessions = () => (
+    <div className="space-y-3">
+      {sessions.length === 0
+        ? <EmptyState icon={Calendar} label="No sessions yet" sub="Create the academic year structure" onAdd={openCreate} accentColor="#059669" />
+        : sessions.map((sess, i) => (
+          <motion.div key={sess.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04 }}
+            className={`bg-white rounded-2xl border shadow-sm p-5 ${sess.isCurrent ? 'border-emerald-300 ring-1 ring-emerald-200' : 'border-slate-200'}`}>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${sess.isCurrent ? 'bg-emerald-100' : 'bg-slate-100'}`}>
+                  <Calendar className={`w-4.5 h-4.5 ${sess.isCurrent ? 'text-emerald-600' : 'text-slate-500'}`} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-bold text-slate-800">{sess.name}</p>
+                    {sess.isCurrent && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 uppercase tracking-wide">
+                        <Sparkles className="w-2.5 h-2.5" /> Current
+                      </span>
+                    )}
+                  </div>
+                  {/* Terms under this session */}
+                  {(sess.terms || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {sess.terms.map(t => (
+                        <span key={t.id} className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                          {termLabel(t.name)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <button onClick={() => openEdit(sess)}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all flex-shrink-0">
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        ))
+      }
+    </div>
+  );
+
+  const renderTerms = () => (
+    <div className="space-y-3">
+      {terms.length === 0
+        ? <EmptyState icon={Timer} label="No terms yet" sub="Add terms within your academic sessions" onAdd={openCreate} accentColor="#d97706" />
+        : terms.map((term, i) => (
+          <motion.div key={term.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.04 }}
+            className={`bg-white rounded-2xl border shadow-sm p-5 ${term.isCurrent ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-200'}`}>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${term.isCurrent ? 'bg-amber-100' : 'bg-slate-100'}`}>
+                  <Timer className={`w-4.5 h-4.5 ${term.isCurrent ? 'text-amber-600' : 'text-slate-500'}`} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-bold text-slate-800">{termLabel(term.name)}</p>
+                    {term.isCurrent && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 uppercase tracking-wide">
+                        <Sparkles className="w-2.5 h-2.5" /> Current
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {term.session?.name ? `Session: ${term.session.name}` : 'No session linked'}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => openEdit(term)}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all flex-shrink-0">
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        ))
+      }
     </div>
   );
 
   const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="flex justify-center items-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-      );
-    }
-
-    switch(activeTab) {
-      case 'classes':
-        return renderClassesTab();
-      case 'class-arms':
-        return renderClassArmsTab();
-      case 'subjects':
-        return renderSubjectsTab();
-      case 'sessions':
-        return renderSessionsTab();
-      case 'terms':
-        return renderTermsTab();
-      default:
-        return null;
+    if (loading) return (
+      <div className="flex flex-col items-center justify-center py-24 gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <p className="text-sm font-medium text-slate-400">Loading…</p>
+      </div>
+    );
+    switch (activeTab) {
+      case 'classes':    return renderClasses();
+      case 'class-arms': return renderArms();
+      case 'subjects':   return renderSubjects();
+      case 'sessions':   return renderSessions();
+      case 'terms':      return renderTerms();
+      default:           return null;
     }
   };
 
-  // Calculate stats
-  const totalClasses = classes.length;
-  const totalArms = classArms.length;
-  const totalSubjects = subjects.length;
-  const totalSessions = sessions.length;
-  const currentSession = sessions.find(s => s.isCurrent);
-  const currentTerm = terms.find(t => t.isCurrent);
+  // Count per tab for badges
+  const counts = {
+    'classes':    classes.length,
+    'class-arms': totalArms,
+    'subjects':   subjects.length,
+    'sessions':   sessions.length,
+    'terms':      terms.length,
+  };
+
+  const drawerTitle = drawer === 'create'
+    ? `New ${tabCfg.label.replace(/s$/, '')}`
+    : `Edit ${tabCfg.label.replace(/s$/, '')}`;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header Banner */}
-      <div className="relative bg-gradient-to-r from-blue-600 to-indigo-800 overflow-hidden">
-        <div className="absolute inset-0 opacity-5">
-          <div className="absolute inset-0" style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20L40 0H0L20 20Z' fill='white'/%3E%3C/svg%3E")`,
-            backgroundSize: '30px 30px'
-          }} />
-        </div>
-        
-        <div className="relative px-6 py-8 md:py-10">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-              <div className="flex-1">
-                <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-3 py-1 mb-4">
-                  <svg className="w-4 h-4 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                  <span className="text-white/90 text-xs font-medium">Academic Management</span>
-                </div>
-                
-                <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-white mb-2">
-                  Academic Structure
-                </h1>
-                
-                <p className="text-blue-100 text-sm md:text-base max-w-2xl">
-                  Manage classes, subjects, sessions, and terms for your school
-                </p>
+    <div className="min-h-screen bg-[#f5f6fa]">
+
+      {/* ── Hero Banner ─────────────────────────────────────── */}
+      <div className="relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #1e40af 55%, #312e81 100%)' }}>
+        {/* Dot grid texture */}
+        <div className="absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 0)', backgroundSize: '24px 24px' }} />
+
+        <div className="relative px-6 py-8 max-w-7xl mx-auto">
+          <div className="flex flex-wrap items-center justify-between gap-6">
+            <div>
+              <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm rounded-full px-3 py-1 mb-3">
+                <BookOpen className="w-3.5 h-3.5 text-white/80" />
+                <span className="text-white/90 text-xs font-semibold">Academic Structure</span>
               </div>
-              
-              <div className="flex gap-3">
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2">
-                  <div className="text-white/70 text-xs">Classes</div>
-                  <div className="text-white text-xl font-bold">{totalClasses}</div>
+              <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Academic Management</h1>
+              <p className="text-blue-200 text-sm mt-1">Configure classes, subjects, sessions and terms</p>
+            </div>
+
+            {/* Hero stat pills */}
+            <div className="flex gap-3 flex-wrap">
+              {[
+                { label: 'Classes',  value: classes.length,  color: 'text-white' },
+                { label: 'Arms',     value: totalArms,        color: 'text-purple-300' },
+                { label: 'Subjects', value: subjects.length,  color: 'text-cyan-300' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="rounded-xl px-4 py-3 text-center min-w-[68px]"
+                  style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                  <p className={`text-2xl font-black ${color}`}>{value}</p>
+                  <p className="text-white/50 text-[10px] font-bold uppercase tracking-wider mt-0.5">{label}</p>
                 </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2">
-                  <div className="text-white/70 text-xs">Arms</div>
-                  <div className="text-white text-xl font-bold">{totalArms}</div>
-                </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl px-4 py-2">
-                  <div className="text-white/70 text-xs">Subjects</div>
-                  <div className="text-white text-xl font-bold">{totalSubjects}</div>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </div>
-        
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-white/20 via-white/40 to-white/20"></div>
-      </div>
 
-      {/* Main Content */}
-      <div className="p-6">
-        {/* Action Bar */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex gap-2 border-b border-gray-200">
-            <button
-              onClick={() => setActiveTab('classes')}
-              className={`px-4 py-2 font-medium transition-colors ${
-                activeTab === 'classes'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Classes
-            </button>
-            <button
-              onClick={() => setActiveTab('class-arms')}
-              className={`px-4 py-2 font-medium transition-colors ${
-                activeTab === 'class-arms'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Class Arms
-            </button>
-            <button
-              onClick={() => setActiveTab('subjects')}
-              className={`px-4 py-2 font-medium transition-colors ${
-                activeTab === 'subjects'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Subjects
-            </button>
-            <button
-              onClick={() => setActiveTab('sessions')}
-              className={`px-4 py-2 font-medium transition-colors ${
-                activeTab === 'sessions'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Sessions
-            </button>
-            <button
-              onClick={() => setActiveTab('terms')}
-              className={`px-4 py-2 font-medium transition-colors ${
-                activeTab === 'terms'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Terms
-            </button>
-          </div>
-          
-          <div className="flex gap-3">
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
-            >
-              {refreshing ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                  </svg>
-                  Refreshing...
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Refresh
-                </>
-              )}
-            </button>
-            
-            <button
-              onClick={openCreateModal}
-              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Create {activeTab === 'classes' ? 'Class' : activeTab === 'class-arms' ? 'Arm' : activeTab.slice(0, -1)}
-            </button>
-          </div>
-        </div>
-
-        {/* Current Session/Term Info */}
-        {(currentSession || currentTerm) && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <div className="flex flex-wrap gap-4">
-              {currentSession && (
-                <div>
-                  <span className="text-xs text-blue-700 font-medium">Current Session</span>
-                  <p className="text-sm text-blue-900">{currentSession.name}</p>
-                </div>
+        {/* Current session/term banner */}
+        {(currentSess || currentTerm) && (
+          <div className="border-t border-white/10 px-6 py-2.5 max-w-7xl mx-auto relative">
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              {currentSess && (
+                <span className="flex items-center gap-1.5 text-white/80 text-xs">
+                  <Sparkles className="w-3 h-3 text-emerald-400" />
+                  <span className="text-white/50">Active Session:</span>
+                  <strong className="text-white">{currentSess.name}</strong>
+                </span>
               )}
               {currentTerm && (
-                <div className="pl-4 border-l border-blue-200">
-                  <span className="text-xs text-blue-700 font-medium">Current Term</span>
-                  <p className="text-sm text-blue-900">{getTermDisplayName(currentTerm.name)}</p>
-                </div>
+                <span className="flex items-center gap-1.5 text-white/80 text-xs">
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  <span className="text-white/50">Active Term:</span>
+                  <strong className="text-white">{termLabel(currentTerm.name)}</strong>
+                </span>
               )}
             </div>
           </div>
         )}
-
-        {/* Content */}
-        {renderContent()}
       </div>
 
-      {/* Create/Edit Modal */}
-      {(showCreateModal || showEditModal) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-            <div className="flex justify-between items-center p-6 border-b">
-              <h2 className="text-xl font-semibold text-gray-900">{getModalTitle()}</h2>
-              <button
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setShowEditModal(false);
-                  setSelectedItem(null);
-                  resetForms();
-                }}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+      {/* ── Sticky Tab Bar + Toolbar ─────────────────────────── */}
+      <div className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center gap-0 overflow-x-auto">
+
+            {/* Tabs */}
+            {TABS.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              const count = counts[tab.id];
+              return (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  className="flex items-center gap-2 px-4 py-3.5 text-sm font-bold whitespace-nowrap transition-all relative flex-shrink-0"
+                  style={{ color: isActive ? tab.color : '#94a3b8' }}>
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                  {count > 0 && (
+                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center"
+                      style={{ background: isActive ? `${tab.color}15` : '#f1f5f9', color: isActive ? tab.color : '#94a3b8' }}>
+                      {count}
+                    </span>
+                  )}
+                  {isActive && (
+                    <motion.div layoutId="tab-indicator"
+                      className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
+                      style={{ background: tab.color }} />
+                  )}
+                </button>
+              );
+            })}
+
+            {/* Toolbar right */}
+            <div className="ml-auto flex-shrink-0 flex items-center gap-2 pl-4 py-2">
+              <button onClick={() => fetchAll(true)} disabled={refreshing}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-500 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50">
+                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                {refreshing ? 'Syncing…' : 'Refresh'}
               </button>
-            </div>
-            <div className="p-6">
-              {renderModalForm()}
-            </div>
-            <div className="flex justify-end gap-3 p-6 border-t">
-              <button
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setShowEditModal(false);
-                  setSelectedItem(null);
-                  resetForms();
-                }}
-                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              >
-                {selectedItem ? 'Update' : 'Create'}
-              </button>
+              <motion.button onClick={openCreate}
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-black text-white rounded-xl shadow-sm transition-colors"
+                style={{ background: tabCfg.color }}>
+                <Plus className="w-3.5 h-3.5" />
+                New {tabCfg.label.replace(/s$/, '')}
+              </motion.button>
             </div>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* ── Content ──────────────────────────────────────────── */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 pb-12">
+        <AnimatePresence mode="wait">
+          <motion.div key={activeTab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.18 }}>
+            {renderContent()}
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      {/* ── Slide-in Drawer ───────────────────────────────────── */}
+      <AnimatePresence>
+        {drawer && (
+          <Drawer
+            title={drawerTitle}
+            subtitle={drawer === 'edit' && selected ? `Editing: ${selected.name || termLabel(selected.name)}` : undefined}
+            icon={tabCfg.icon}
+            accentColor={tabCfg.color}
+            onClose={closeDrawer}
+            onSave={handleSave}
+            saveLabel={drawer === 'create' ? `Create ${tabCfg.label.replace(/s$/, '')}` : 'Save Changes'}
+            saving={saving}
+          >
+            {renderDrawerForm()}
+          </Drawer>
+        )}
+      </AnimatePresence>
+
+      {/* ── Delete Confirm ────────────────────────────────────── */}
+      <AnimatePresence>
+        {confirm && (
+          <ConfirmDialog
+            title={`Delete ${confirm.name}?`}
+            message="This action cannot be undone. All related data will be permanently removed."
+            onConfirm={handleDelete}
+            onCancel={() => setConfirm(null)}
+            loading={deleting}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

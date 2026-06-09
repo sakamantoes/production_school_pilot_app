@@ -11,58 +11,79 @@ import ProtectedRoute from "../routes/ProtectedRoute";
 import DashboardLayout from "../layouts/DashboardLayout";
 
 /* Dashboards for all roles */
+// Super Admin
 import SuperAdminDashboard from "../dashboards/super-admin/SuperAdminDashboard";
+
+// School Admin
 import SchoolAdminDashboard from "../dashboards/school-admin/SchoolAdminDashboard";
-import TeacherDashboard from "../dashboards/teacher/TeacherDashboard";
-import StudentDashboard from "../dashboards/student/StudentDashboard";
 import SchoolAdminProfile from "../dashboards/school-admin/SchoolAdminProfile";
 import CreateStudentAdmin from "../dashboards/school-admin/CreateStudentAdmin";
 import CreateTeacherAdmin from "../dashboards/school-admin/CreateTeacherAdmin";
 import AcademicManagement from "../dashboards/school-admin/AcademicManagement";
 import TeacherDetail from "../dashboards/school-admin/TeacherDetail";
 import StudentDetail from "../dashboards/school-admin/StudentDetail";
+import FeeManagement from "../dashboards/school-admin/FeeManagement";
+import AnalyticsDashboard from "../dashboards/school-admin/AnalyticsDashboard";
+import Timetable from "../dashboards/school-admin/Timetable";
+import ResultsAdmin from "../dashboards/school-admin/ResultsAdmin";
+import AnnouncementsAdmin from "../dashboards/school-admin/AnnouncementsAdmin";
+import Attendance from "../dashboards/school-admin/Attendance";
+
+// Teacher
+import TeacherDashboard from "../dashboards/teacher/TeacherDashboard";
+
+// Student
+import StudentDashboard from "../dashboards/student/StudentDashboard";
 
 const AppRoutes = () => {
   return (
     <Routes>
       {/* Public Routes */}
       <Route path="/" element={<Home />} />
-      
+
       {/* Auth Routes (with AuthLayout) */}
       <Route element={<AuthLayout />}>
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
       </Route>
-      
+
       {/* Protected Dashboard Routes */}
-     <Route element={<ProtectedRoute />}>
-  <Route path="/super-admin" element={<DashboardLayout />}>
-    <Route index element={<SuperAdminDashboard />} />
-    <Route path="dashboard" element={<SuperAdminDashboard />} />
-   
-  </Route>
+      <Route element={<ProtectedRoute />}>
+        <Route path="/super-admin" element={<DashboardLayout />}>
+          <Route index element={<SuperAdminDashboard />} />
+          <Route path="dashboard" element={<SuperAdminDashboard />} />
+        </Route>
 
-  <Route path="/school-admin" element={<DashboardLayout />}>
-    <Route index element={<SchoolAdminDashboard />} />
-    <Route path="dashboard" element={<SchoolAdminDashboard />} />
-     <Route path="profile" element={<SchoolAdminProfile />} />
-     <Route path="student-management" element={<CreateStudentAdmin />} />
-     <Route path="teachers-management" element={<CreateTeacherAdmin />} />
-     <Route path="academic-management" element={<AcademicManagement />} />
-      <Route path="teachers /:id" element={<TeacherDetail />} />
-       <Route path="students/:id" element={<StudentDetail />} />
-  </Route>
+        {/* SCHOOL ADMIN */}
+        <Route path="/school-admin" element={<DashboardLayout />}>
+          <Route index element={<SchoolAdminDashboard />} />
+          <Route path="dashboard" element={<SchoolAdminDashboard />} />
+          <Route path="profile" element={<SchoolAdminProfile />} />
+          <Route path="student-management" element={<CreateStudentAdmin />} />
+          <Route path="teachers-management" element={<CreateTeacherAdmin />} />
+          <Route path="academic-management" element={<AcademicManagement />} />
+          <Route path="teachers/:id" element={<TeacherDetail />} />
+          <Route path="students/:id" element={<StudentDetail />} />
+          <Route path="fees" element={<FeeManagement />} />
+          <Route path="reports" element={<AnalyticsDashboard />} />
+          <Route path="timetable" element={<Timetable />} />
+          <Route path="result-approval" element={<ResultsAdmin />} />
+          <Route path="Announcements" element={<AnnouncementsAdmin />} />
+          <Route path="Attendance" element={<Attendance />} />
+        </Route>
 
-  <Route path="/teacher" element={<DashboardLayout />}>
-    <Route index element={<TeacherDashboard />} />
-    <Route path="dashboard" element={<TeacherDashboard />} />
-  </Route>
+        {/* TEACHER DASHBOARD */}
+        <Route path="/teacher" element={<DashboardLayout />}>
+          <Route index element={<TeacherDashboard />} />
+          <Route path="dashboard" element={<TeacherDashboard />} />
+        </Route>
 
-  <Route path="/student" element={<DashboardLayout />}>
-    <Route index element={<StudentDashboard />} />
-    <Route path="dashboard" element={<StudentDashboard />} />
-  </Route>
-</Route>
+        {/* STUDENT DASHBOARD */}
+        <Route path="/student" element={<DashboardLayout />}>
+          <Route index element={<StudentDashboard />} />
+          <Route path="dashboard" element={<StudentDashboard />} />
+        </Route>
+      </Route>
 
       {/* 404 PAGE */}
       <Route path="*" element={<NotFound />} />
