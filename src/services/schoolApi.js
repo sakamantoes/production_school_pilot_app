@@ -297,6 +297,187 @@ export const analyticsAPI = {
   },
 };
 
+// ==================== TIMETABLE API ====================
+export const timetableAPI = {
+  // Create timetable
+  createTimetable: async (timetableData) => {
+    const response = await api.post("/admin/timetables", timetableData);
+    return response.data;
+  },
+
+  // Get all timetables
+  getTimetables: async (classId) => {
+    const params = classId ? { classId } : {};
+    const response = await api.get("/admin/timetables", { params });
+    return response.data;
+  },
+
+  // Get single timetable
+  getTimetable: async (timetableId) => {
+    const response = await api.get(`/admin/timetables/${timetableId}`);
+    return response.data;
+  },
+
+  // Update timetable
+  updateTimetable: async (timetableId, timetableData) => {
+    const response = await api.patch(`/admin/timetables/${timetableId}`, timetableData);
+    return response.data;
+  },
+
+  // Delete timetable
+  deleteTimetable: async (timetableId) => {
+    const response = await api.delete(`/admin/timetables/${timetableId}`);
+    return response.data;
+  },
+
+  // Add timetable entry
+  addTimetableEntry: async (timetableId, entryData) => {
+    const response = await api.post(`/admin/timetables/${timetableId}/entries`, entryData);
+    return response.data;
+  },
+
+  // Update timetable entry
+  updateTimetableEntry: async (entryId, entryData) => {
+    const response = await api.patch(`/admin/timetable-entries/${entryId}`, entryData);
+    return response.data;
+  },
+
+  // Delete timetable entry
+  deleteTimetableEntry: async (entryId) => {
+    const response = await api.delete(`/admin/timetable-entries/${entryId}`);
+    return response.data;
+  },
+};
+
+// ==================== RESULT APPROVAL API ====================
+export const resultApprovalAPI = {
+  // Get classes with pending results
+  getPendingResultClasses: async () => {
+    const response = await api.get("/admin/results/pending-classes");
+    return response.data;
+  },
+
+  // Get result approval statistics
+  getResultApprovalStats: async () => {
+    const response = await api.get("/admin/results/approval-stats");
+    return response.data;
+  },
+
+  // Get approval history
+  getApprovalHistory: async () => {
+    const response = await api.get("/admin/results/approval-history");
+    return response.data;
+  },
+
+  // Get results by class
+  getResultsByClass: async (classId, armId, status) => {
+    const params = {};
+    if (armId) params.armId = armId;
+    if (status) params.status = status;
+    const response = await api.get(`/admin/classes/${classId}/results`, { params });
+    return response.data;
+  },
+
+  // Approve single result
+  approveResult: async (resultId, decisionData) => {
+    const response = await api.patch(`/admin/results/${resultId}/approve`, decisionData);
+    return response.data;
+  },
+
+  // Reject single result
+  rejectResult: async (resultId, decisionData) => {
+    const response = await api.patch(`/admin/results/${resultId}/reject`, decisionData);
+    return response.data;
+  },
+
+  // Bulk approve results
+  bulkApproveResults: async (bulkData) => {
+    const response = await api.patch("/admin/results/bulk-approve", bulkData);
+    return response.data;
+  },
+
+  // Bulk reject results
+  bulkRejectResults: async (bulkData) => {
+    const response = await api.patch("/admin/results/bulk-reject", bulkData);
+    return response.data;
+  },
+};
+
+// ==================== ANNOUNCEMENT API ====================
+export const announcementAPI = {
+  // Create announcement
+  createAnnouncement: async (announcementData) => {
+    const response = await api.post("/admin/announcements", announcementData);
+    return response.data;
+  },
+
+  // Get all announcements
+  getAnnouncements: async () => {
+    const response = await api.get("/admin/announcements");
+    return response.data;
+  },
+
+  // Update announcement
+  updateAnnouncement: async (announcementId, announcementData) => {
+    const response = await api.patch(`/admin/announcements/${announcementId}`, announcementData);
+    return response.data;
+  },
+
+  // Delete announcement
+  deleteAnnouncement: async (announcementId) => {
+    const response = await api.delete(`/admin/announcements/${announcementId}`);
+    return response.data;
+  },
+
+  // Publish announcement
+  publishAnnouncement: async (announcementId) => {
+    const response = await api.patch(`/admin/announcements/${announcementId}/publish`);
+    return response.data;
+  },
+
+  // Unpublish announcement
+  unpublishAnnouncement: async (announcementId) => {
+    const response = await api.patch(`/admin/announcements/${announcementId}/unpublish`);
+    return response.data;
+  },
+};
+
+// ==================== NOTIFICATION API ====================
+export const notificationAPI = {
+  // Create notification
+  createNotification: async (notificationData) => {
+    const response = await api.post("/admin/notifications", notificationData);
+    return response.data;
+  },
+
+  // Get notification history
+  getNotificationHistory: async () => {
+    const response = await api.get("/admin/notifications");
+    return response.data;
+  },
+
+  // Send notification
+  sendNotification: async (notificationId) => {
+    const response = await api.patch(`/admin/notifications/${notificationId}/send`);
+    return response.data;
+  },
+};
+
+// ==================== REPORTS & ATTENDANCE API ====================
+export const reportsAPI = {
+  // Get school reports (aggregated dashboard data)
+  getSchoolReports: async () => {
+    const response = await api.get("/admin/reports");
+    return response.data;
+  },
+
+  // Get attendance records
+  getAttendance: async (params) => {
+    const response = await api.get("/admin/attendance", { params });
+    return response.data;
+  },
+};
+
 // ==================== COMBINED EXPORT (Optional) ====================
 const schoolAPI = {
   ...schoolProfileAPI,
@@ -311,6 +492,11 @@ const schoolAPI = {
   ...paymentAPI,
   ...walletAPI,
   ...analyticsAPI,
+  ...timetableAPI,
+  ...resultApprovalAPI,
+  ...announcementAPI,
+  ...notificationAPI,
+  ...reportsAPI,
 };
 
 export default schoolAPI;

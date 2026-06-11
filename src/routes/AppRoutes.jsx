@@ -24,16 +24,20 @@ import TeacherDetail from "../dashboards/school-admin/TeacherDetail";
 import StudentDetail from "../dashboards/school-admin/StudentDetail";
 import FeeManagement from "../dashboards/school-admin/FeeManagement";
 import AnalyticsDashboard from "../dashboards/school-admin/AnalyticsDashboard";
-import Timetable from "../dashboards/school-admin/Timetable";
-import ResultsAdmin from "../dashboards/school-admin/ResultsAdmin";
+import TimetableManager from "../dashboards/school-admin/TimetableManager";
+import ResultApproval from "../dashboards/school-admin/ResultApproval";
 import AnnouncementsAdmin from "../dashboards/school-admin/AnnouncementsAdmin";
-import Attendance from "../dashboards/school-admin/Attendance";
+import AttendanceReport from "../dashboards/school-admin/AttendanceReport";
 
 // Teacher
 import TeacherDashboard from "../dashboards/teacher/TeacherDashboard";
 
 // Student
 import StudentDashboard from "../dashboards/student/StudentDashboard";
+import CreateNotification from "../dashboards/school-admin/CreateNotification";
+
+
+
 
 const AppRoutes = () => {
   return (
@@ -66,10 +70,11 @@ const AppRoutes = () => {
           <Route path="students/:id" element={<StudentDetail />} />
           <Route path="fees" element={<FeeManagement />} />
           <Route path="reports" element={<AnalyticsDashboard />} />
-          <Route path="timetable" element={<Timetable />} />
-          <Route path="result-approval" element={<ResultsAdmin />} />
-          <Route path="Announcements" element={<AnnouncementsAdmin />} />
-          <Route path="Attendance" element={<Attendance />} />
+          <Route path="timetable" element={<TimetableManager />} />
+          <Route path="result-approval" element={<ResultApproval />} />
+          <Route path="announcements-Management" element={<AnnouncementsAdmin />} />
+          <Route path="notifications-Management" element={<CreateNotification />} />
+          <Route path="attendance-report" element={<AttendanceReport />} />
         </Route>
 
         {/* TEACHER DASHBOARD */}
