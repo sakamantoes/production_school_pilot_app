@@ -13,6 +13,7 @@ import {
   Target, CheckCircle, BarChart3, Star,
 } from 'lucide-react';
 import teacherApi from '../../services/teacherApi';
+import Loader from '../../components/Loader'
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
@@ -162,11 +163,7 @@ const TeacherDashboard = () => {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
         <div className="text-center">
-          <div className="relative">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 animate-pulse" />
-            <Loader2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 animate-spin text-white" />
-          </div>
-          <p className="text-slate-500 mt-4 font-medium">Loading your dashboard...</p>
+          <Loader />
         </div>
       </div>
     );
