@@ -461,6 +461,30 @@ export const notificationAPI = {
     const response = await api.patch(`/admin/notifications/${notificationId}/send`);
     return response.data;
   },
+
+  // Update notification
+  updateNotification: async (notificationId, data) => {
+    const response = await api.put(`/admin/notifications/${notificationId}`, data);
+    return response.data;
+  },
+
+  // Delete notification
+  deleteNotification: async (notificationId) => {
+    const response = await api.delete(`/admin/notifications/${notificationId}`);
+    return response.data;
+  },
+
+  // Mark notification as read
+  markNotificationAsRead: async (notificationId) => {
+    const response = await api.post(`/admin/notifications/${notificationId}/read`);
+    return response.data;
+  },
+
+  // Mark all as read
+  markAllNotificationsAsRead: async () => {
+    const response = await api.post("/admin/notifications/mark-all-read");
+    return response.data;
+  },
 };
 
 // ==================== REPORTS & ATTENDANCE API ====================
