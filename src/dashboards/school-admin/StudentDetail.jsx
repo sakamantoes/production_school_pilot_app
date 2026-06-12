@@ -1,585 +1,606 @@
 // dashboards/school-admin/StudentDetail.jsx
-import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import toast from "react-hot-toast";
+// ─── Complete Edit Student Component ─────────────────────────────────────────
+// Allows editing: firstName, lastName, email, phone, image, studentId, admissionYear
+// Professional design with form validation and image upload
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 import {
   ArrowLeft,
   User,
   Mail,
   Phone,
+  Camera,
+  Upload,
+  Save,
+  X,
+  Loader2,
+  AlertCircle,
+  CheckCircle,
+  GraduationCap,
   Calendar,
+  Eye,
+  EyeOff,
+  Lock,
   BookOpen,
   Users,
-  Award,
-  Star,
-  PowerOff,
-  Edit2,
-  GraduationCap,
-  CheckCircle,
-  XCircle,
-  MapPin,
-  Briefcase,
-  Clock,
-  Loader2,
-  RefreshCw,
-  ChevronRight,
-  AlertCircle,
-  Shield,
-  Smartphone,
-  AtSign,
-  FileText,
-  PieChart,
-  TrendingUp,
-  Calendar as CalendarIcon,
-  ExternalLink,
-  CreditCard,
-  Activity,
-  Home,
-  School,
-  BookMarked,
-} from "lucide-react";
-import { studentAPI, classAPI, sessionAPI, termAPI } from "../../services/schoolApi";
+} from 'lucide-react';
+import { studentAPI, classAPI, sessionAPI, termAPI } from '../../services/schoolApi';
+
+// ─────────────────────────────────────────────────────────────
+// CLOUDINARY CONFIG
+// ─────────────────────────────────────────────────────────────
+const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+const cloudUpload = async (file, setUploading) => {
+  if (!CLOUD_NAME || !UPLOAD_PRESET) {
+    throw new Error('Cloudinary is not configured');
+  }
+  setUploading(true);
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', UPLOAD_PRESET);
+  fd.append('folder', 'students');
+  try {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+      method: 'POST',
+      body: fd,
+    });
+    const data = await res.json();
+    if (data.secure_url) return data.secure_url;
+    throw new Error(data.error?.message || 'Upload failed');
+  } finally {
+    setUploading(false);
+  }
+};
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 const toArray = (res, ...keys) => {
   if (!res) return [];
-  const candidates = [
-    res, res.data, res.data?.data,
-    ...keys.map(k => res[k]),
-    ...keys.map(k => res.data?.[k]),
-  ];
-  for (const c of candidates) { if (Array.isArray(c)) return c; }
+  const candidates = [res, res.data, res.data?.data, ...keys.map(k => res[k]), ...keys.map(k => res.data?.[k])];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c;
+  }
   return [];
 };
 
 const normaliseStudent = (s) => {
   const u = s.user || s;
-  // Get current enrollment
-  const enrollments = Array.isArray(s.enrollments) ? s.enrollments : [];
-  const currentEnrollment = enrollments.find(e => e.status === "ACTIVE" || e.status === "active") || enrollments[0];
-  const classArm = currentEnrollment?.classArm || currentEnrollment?.arm;
-  const classObj = currentEnrollment?.class || classArm?.class;
-  const armObj = currentEnrollment?.arm || classArm;
-  
   return {
     id: s.id,
     userId: s.userId || u.id,
-    studentId: s.studentId || u.student_id || null,
+    studentId: s.studentId || u.student_id || '',
     firstName: u.firstName || u.first_name || '',
     lastName: u.lastName || u.last_name || '',
-    email: u.email || '—',
-    phone: u.phone || null,
-    image: u.image || null,
+    email: u.email || '',
+    phone: u.phone || '',
+    image: u.image || '',
     isActive: u.isActive !== false,
-    admissionYear: s.admissionYear || u.admission_year || null,
-    currentClass: classObj?.name || currentEnrollment?.class?.name || null,
-    currentArm: armObj?.name || currentEnrollment?.arm?.name || null,
-    currentSession: currentEnrollment?.session?.name || null,
-    currentTerm: currentEnrollment?.term?.name || null,
-    enrollmentStatus: currentEnrollment?.status || 'PENDING',
-    enrollments: enrollments,
+    admissionYear: s.admissionYear || u.admission_year || new Date().getFullYear(),
     createdAt: s.createdAt || u.createdAt || s.created_at,
-    updatedAt: s.updatedAt || u.updatedAt,
     _raw: s,
   };
 };
 
 // ─────────────────────────────────────────────────────────────
-// AVATAR
-// ─────────────────────────────────────────────────────────────
-const PALETTE = ['#3b82f6','#6366f1','#8b5cf6','#ec4899','#10b981','#f59e0b','#ef4444'];
-
-const Avatar = ({ s, size = 80 }) => {
-  const initials = `${s.firstName?.[0] || ''}${s.lastName?.[0] || ''}`.toUpperCase() || 'S';
-  const bg = PALETTE[(s.firstName?.charCodeAt(0) || 0) % PALETTE.length];
-
-  if (s.image) {
-    return (
-      <img
-        src={s.image}
-        alt={`${s.firstName} ${s.lastName}`}
-        style={{ width: size, height: size }}
-        className="rounded-2xl object-cover border-4 border-white shadow-xl flex-shrink-0"
-        onError={e => {
-          e.target.style.display = 'none';
-          e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{ width: size, height: size, background: bg, fontSize: size * 0.35 }}
-      className="rounded-2xl flex items-center justify-center text-white font-bold border-4 border-white shadow-xl flex-shrink-0"
-    >
-      {initials}
-    </div>
-  );
-};
-
-const StatusBadge = ({ isActive, enrollmentStatus }) => {
-  if (!isActive)
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
-        <PowerOff className="w-3.5 h-3.5" /> Inactive
-      </span>
-    );
-  
-  if (enrollmentStatus === "GRADUATED")
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-purple-100 text-purple-700">
-        <Award className="w-3.5 h-3.5" /> Graduated
-      </span>
-    );
-  
-  if (enrollmentStatus === "ACTIVE" || enrollmentStatus === "active")
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-        <CheckCircle className="w-3.5 h-3.5" /> Active
-      </span>
-    );
-  
-  return (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
-      <Clock className="w-3.5 h-3.5" /> Pending
-    </span>
-  );
-};
-
-const InfoCard = ({ title, children, icon: Icon, accent = "#3b82f6" }) => (
-  <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-    <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 bg-slate-50/50">
-      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${accent}15` }}>
-        <Icon className="w-3.5 h-3.5" style={{ color: accent }} />
-      </div>
-      <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-    </div>
-    <div className="p-5">{children}</div>
-  </div>
-);
-
-const StatBadge = ({ label, value, icon: Icon, color }) => (
-  <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
-    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
-      <Icon className="w-4 h-4" style={{ color }} />
-    </div>
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
-      <p className="text-sm font-bold text-slate-800">{value}</p>
-    </div>
-  </div>
-);
-
-// ─────────────────────────────────────────────────────────────
-// MAIN COMPONENT
+// EDIT STUDENT COMPONENT
 // ─────────────────────────────────────────────────────────────
 const StudentDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [student, setStudent] = useState(null);
+  
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [academicStats, setAcademicStats] = useState({
-    averageScore: 0,
-    subjectsCount: 0,
-    attendanceRate: 0,
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [originalStudent, setOriginalStudent] = useState(null);
+  
+  const [form, setForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    image: '',
+    studentId: '',
+    admissionYear: new Date().getFullYear(),
+    isActive: true,
+    password: '',
+    confirmPassword: '',
   });
-
-  const fetchStudent = useCallback(async (isRefresh = false) => {
-    isRefresh ? setRefreshing(true) : setLoading(true);
+  
+  const [errors, setErrors] = useState({});
+  const [imgPreview, setImgPreview] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  
+  // Fetch student data
+  const fetchData = useCallback(async () => {
+    setLoading(true);
     try {
-      const [studentRes, analyticsRes] = await Promise.allSettled([
-        studentAPI.getStudent(id),
-        studentAPI.getStudentAnalytics?.(id) || Promise.resolve({}),
-      ]);
-
-      const rawStudent = studentRes.status === 'fulfilled' ? studentRes.value : null;
-      const studentData = rawStudent?.data?.data || rawStudent?.data || rawStudent;
-      
-      if (!studentData) throw new Error('Student not found');
+      const studentRes = await studentAPI.getStudent(id);
+      const studentData = studentRes?.data?.data || studentRes?.data || studentRes;
+      setOriginalStudent(studentData);
       
       const normalized = normaliseStudent(studentData);
-      setStudent(normalized);
-
-      // Calculate academic stats from available data
-      const analytics = analyticsRes.status === 'fulfilled' ? analyticsRes.value : null;
-      if (analytics) {
-        setAcademicStats({
-          averageScore: analytics.average_score || analytics.avgScore || 0,
-          subjectsCount: analytics.subjects_count || analytics.subjectsEnrolled || 0,
-          attendanceRate: analytics.attendance_rate || analytics.attendance || 0,
-        });
-      }
-
-      if (isRefresh) toast.success('Student data refreshed');
-    } catch (err) {
-      console.error('Error fetching student:', err);
-      toast.error(err?.response?.data?.message || 'Failed to load student details');
-      if (err?.response?.status === 404) navigate('/school-admin/student-management');
+      setForm({
+        firstName: normalized.firstName,
+        lastName: normalized.lastName,
+        email: normalized.email,
+        phone: normalized.phone,
+        image: normalized.image,
+        studentId: normalized.studentId,
+        admissionYear: normalized.admissionYear,
+        isActive: normalized.isActive,
+        password: '',
+        confirmPassword: '',
+      });
+      setImgPreview(normalized.image || null);
+      
+    } catch (error) {
+      console.error('Error fetching student:', error);
+      toast.error('Failed to load student data');
+      navigate('/school-admin/student-management');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [id, navigate]);
-
+  
   useEffect(() => {
-    fetchStudent();
-  }, [fetchStudent]);
-
-  const formatDate = (date) => {
-    if (!date) return 'Not available';
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
-
-  const getClassDisplay = () => {
-    if (!student) return '—';
-    if (student.currentClass && student.currentArm) {
-      return `${student.currentClass} — ${student.currentArm}`;
+    fetchData();
+  }, [fetchData]);
+  
+  // Handle form field changes
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setForm(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
     }
-    if (student.currentClass) return student.currentClass;
-    if (student.currentArm) return student.currentArm;
-    return 'Not enrolled';
   };
-
+  
+  // Handle image upload
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
+      setErrors(prev => ({ ...prev, image: 'JPEG, PNG or WEBP only' }));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrors(prev => ({ ...prev, image: 'Max 5 MB' }));
+      return;
+    }
+    
+    // Preview
+    const reader = new FileReader();
+    reader.onloadend = () => setImgPreview(reader.result);
+    reader.readAsDataURL(file);
+    setErrors(prev => ({ ...prev, image: '' }));
+    
+    try {
+      const url = await cloudUpload(file, setUploading);
+      setForm(prev => ({ ...prev, image: url }));
+      setImgPreview(url);
+      toast.success('Photo uploaded successfully');
+    } catch (err) {
+      setErrors(prev => ({ ...prev, image: err.message }));
+      setImgPreview(form.image || null);
+    }
+  };
+  
+  const removeImage = () => {
+    setForm(prev => ({ ...prev, image: '' }));
+    setImgPreview(null);
+  };
+  
+  // Validate form
+  const validate = () => {
+    const newErrors = {};
+    
+    if (!form.firstName.trim()) newErrors.firstName = 'First name is required';
+    if (!form.lastName.trim()) newErrors.lastName = 'Last name is required';
+    if (!form.email.trim()) newErrors.email = 'Email is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) newErrors.email = 'Invalid email format';
+    
+    if (form.password) {
+      if (form.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
+      if (form.password !== form.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+    }
+    
+    return newErrors;
+  };
+  
+  // Handle submit
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const newErrors = validate();
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      toast.error('Please fix the errors before saving');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      const payload = {
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim() || undefined,
+        image: form.image || undefined,
+        studentId: form.studentId,
+        admissionYear: parseInt(form.admissionYear),
+        isActive: form.isActive,
+      };
+      
+      if (form.password) {
+        payload.password = form.password;
+      }
+      
+      await studentAPI.updateStudent(id, payload);
+      toast.success('Student profile updated successfully');
+      navigate('/school-admin/student-management');
+    } catch (error) {
+      console.error('Update error:', error);
+      const errorMsg = error?.response?.data?.message || error?.response?.data?.errors?.[0]?.message || 'Failed to update student';
+      toast.error(errorMsg);
+    } finally {
+      setSaving(false);
+    }
+  };
+  
+  // Handle activate/deactivate
+  const handleToggleActive = async () => {
+    try {
+      if (form.isActive) {
+        await studentAPI.deleteStudent(id);
+        toast.success('Student deactivated');
+      } else {
+        await studentAPI.activateStudent(id);
+        toast.success('Student activated');
+      }
+      setForm(prev => ({ ...prev, isActive: !prev.isActive }));
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update status');
+    }
+  };
+  
+  // Year options for admission year dropdown
+  const yearOptions = Array.from({ length: 20 }, (_, i) => {
+    const year = new Date().getFullYear() - i;
+    return { value: year, label: year };
+  });
+  
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-        <p className="text-slate-500 font-medium">Loading student profile...</p>
+        <p className="text-slate-500 font-medium">Loading student data...</p>
       </div>
     );
   }
-
-  if (!student) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center">
-          <AlertCircle className="w-10 h-10 text-slate-400" />
-        </div>
-        <h2 className="text-xl font-bold text-slate-700">Student not found</h2>
-        <p className="text-slate-500">The student you're looking for doesn't exist or has been removed.</p>
-        <button
-          onClick={() => navigate('/school-admin/student-management')}
-          className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back to Students
-        </button>
-      </div>
-    );
-  }
-
+  
   return (
     <div className="space-y-6">
-      {/* Header with back button */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => navigate('/school-admin/student-management')}
-          className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors group"
-        >
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-          <span className="text-sm font-medium">Back to Students</span>
-        </button>
-        
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => fetchStudent(true)}
-            disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <Link
+            to="/school-admin/student-management"
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors group"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Refreshing...' : 'Refresh'}
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+            <span className="text-sm font-medium">Back to Students</span>
+          </Link>
+          <div className="h-6 w-px bg-slate-200" />
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">Edit Student</h1>
+            <p className="text-xs text-slate-500">Update student information and settings</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleToggleActive}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-colors ${
+              form.isActive
+                ? 'text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100'
+                : 'text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100'
+            }`}
+          >
+            {form.isActive ? 'Deactivate Account' : 'Activate Account'}
           </button>
           <button
-            onClick={() => navigate(`/school-admin/student-management/edit/${student.id}`)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
+            onClick={handleSubmit}
+            disabled={saving || uploading}
+            className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Edit2 className="w-4 h-4" /> Edit Profile
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
-
-      {/* Profile Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden"
-      >
-        <div className="relative h-32 bg-gradient-to-r from-emerald-600 to-teal-700" />
-        
-        <div className="relative px-6 pb-6">
-          <div className="flex flex-col md:flex-row md:items-end gap-4 -mt-12">
-            <Avatar s={student} size={100} />
-            
-            <div className="flex-1 flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900">
-                  {student.firstName} {student.lastName}
-                </h1>
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <StatusBadge isActive={student.isActive} enrollmentStatus={student.enrollmentStatus} />
-                  {student.studentId && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-                      <GraduationCap className="w-3.5 h-3.5" /> ID: {student.studentId}
-                    </span>
-                  )}
-                </div>
+      
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Profile Image Section */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <Camera className="w-4 h-4 text-blue-500" />
+            Profile Photo
+          </h3>
+          
+          <div className="flex flex-col sm:flex-row items-center gap-6">
+            <div className="relative flex-shrink-0">
+              <div className="w-32 h-32 rounded-2xl overflow-hidden border-2 border-slate-200 bg-slate-100 flex items-center justify-center">
+                {imgPreview ? (
+                  <img src={imgPreview} alt="Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <User className="w-12 h-12 text-slate-300" />
+                )}
               </div>
-              
-              <div className="flex gap-2">
-                <button
-                  onClick={() => window.location.href = `mailto:${student.email}`}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
-                >
-                  <Mail className="w-4 h-4" /> Email
-                </button>
-                {student.phone && (
+              {uploading && (
+                <div className="absolute inset-0 rounded-2xl bg-white/80 flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                </div>
+              )}
+            </div>
+            
+            <div className="flex-1 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl cursor-pointer transition-colors">
+                  <Upload className="w-4 h-4" />
+                  {uploading ? 'Uploading...' : 'Upload New Photo'}
+                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
+                </label>
+                {imgPreview && (
                   <button
-                    onClick={() => window.location.href = `tel:${student.phone}`}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+                    type="button"
+                    onClick={removeImage}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rose-600 border border-rose-200 rounded-xl hover:bg-rose-50 transition-colors"
                   >
-                    <Phone className="w-4 h-4" /> Call
+                    <X className="w-4 h-4" /> Remove
                   </button>
                 )}
+              </div>
+              {errors.image && (
+                <p className="text-xs text-rose-500 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.image}
+                </p>
+              )}
+              <p className="text-xs text-slate-400">JPEG, PNG or WEBP — max 5 MB</p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Personal Information */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <User className="w-4 h-4 text-blue-500" />
+            Personal Information
+          </h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                First Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="firstName"
+                value={form.firstName}
+                onChange={handleChange}
+                className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                  errors.firstName ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                }`}
+                placeholder="Enter first name"
+              />
+              {errors.firstName && (
+                <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                Last Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="lastName"
+                value={form.lastName}
+                onChange={handleChange}
+                className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                  errors.lastName ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                }`}
+                placeholder="Enter last name"
+              />
+              {errors.lastName && (
+                <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                Email Address <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  name="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  className={`w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                    errors.email ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                  }`}
+                  placeholder="student@school.com"
+                />
+              </div>
+              {errors.email && (
+                <p className="text-xs text-red-500 mt-1">{errors.email}</p>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                Phone Number
+              </label>
+              <div className="relative">
+                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="tel"
+                  name="phone"
+                  value={form.phone}
+                  onChange={handleChange}
+                  className="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl border-2 border-slate-200 outline-none focus:border-blue-500 transition-all"
+                  placeholder="+234 800 000 0000"
+                />
               </div>
             </div>
           </div>
         </div>
-      </motion.div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        <StatBadge
-          label="Student ID"
-          value={student.studentId || '—'}
-          icon={GraduationCap}
-          color="#3b82f6"
-        />
-        <StatBadge
-          label="Class"
-          value={getClassDisplay()}
-          icon={School}
-          color="#8b5cf6"
-        />
-        <StatBadge
-          label="Admission Year"
-          value={student.admissionYear || '—'}
-          icon={CalendarIcon}
-          color="#10b981"
-        />
-        <StatBadge
-          label="Academic Session"
-          value={student.currentSession || '—'}
-          icon={BookOpen}
-          color="#f59e0b"
-        />
-      </div>
-
-      {/* Academic Stats (if available) */}
-      {(academicStats.averageScore > 0 || academicStats.attendanceRate > 0) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {academicStats.averageScore > 0 && (
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-100">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">Average Score</p>
-                  <p className="text-3xl font-bold text-blue-700 mt-1">{academicStats.averageScore}%</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
-                  <TrendingUp className="w-6 h-6 text-blue-600" />
-                </div>
+        
+        {/* Student Details */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <GraduationCap className="w-4 h-4 text-emerald-500" />
+            Student Details
+          </h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                Student ID
+              </label>
+              <div className="relative">
+                <GraduationCap className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  name="studentId"
+                  value={form.studentId}
+                  onChange={handleChange}
+                  className="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl border-2 border-slate-200 bg-slate-50 outline-none cursor-not-allowed"
+                  placeholder="Auto-generated"
+                  readOnly
+                  disabled
+                />
               </div>
+              <p className="text-xs text-slate-400 mt-1">Student ID is auto-generated and cannot be changed</p>
             </div>
-          )}
-          {academicStats.attendanceRate > 0 && (
-            <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-2xl p-4 border border-emerald-100">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-widest text-emerald-600">Attendance Rate</p>
-                  <p className="text-3xl font-bold text-emerald-700 mt-1">{academicStats.attendanceRate}%</p>
-                </div>
-                <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center">
-                  <Activity className="w-6 h-6 text-emerald-600" />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Two Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Personal Info */}
-        <div className="lg:col-span-1 space-y-6">
-          <InfoCard title="Personal Information" icon={User} accent="#3b82f6">
-            <div className="space-y-3">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Full Name</p>
-                <p className="text-sm font-medium text-slate-800">{student.firstName} {student.lastName}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Email Address</p>
-                <div className="flex items-center gap-2">
-                  <AtSign className="w-3.5 h-3.5 text-slate-400" />
-                  <p className="text-sm text-slate-700">{student.email}</p>
-                </div>
-              </div>
-              {student.phone && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Phone Number</p>
-                  <div className="flex items-center gap-2">
-                    <Smartphone className="w-3.5 h-3.5 text-slate-400" />
-                    <p className="text-sm text-slate-700">{student.phone}</p>
-                  </div>
-                </div>
-              )}
-              {student.createdAt && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Enrolled Since</p>
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                    <p className="text-sm text-slate-700">{formatDate(student.createdAt)}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </InfoCard>
-
-          <InfoCard title="Enrollment Details" icon={School} accent="#8b5cf6">
-            <div className="space-y-3">
-              <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                <span className="text-xs text-slate-500">Status</span>
-                <StatusBadge isActive={student.isActive} enrollmentStatus={student.enrollmentStatus} />
-              </div>
-              <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                <span className="text-xs text-slate-500">Class</span>
-                <span className="text-sm font-medium text-slate-700">{getClassDisplay()}</span>
-              </div>
-              <div className="flex justify-between items-center py-2 border-b border-slate-100">
-                <span className="text-xs text-slate-500">Session</span>
-                <span className="text-sm font-medium text-slate-700">{student.currentSession || '—'}</span>
-              </div>
-              <div className="flex justify-between items-center py-2">
-                <span className="text-xs text-slate-500">Term</span>
-                <span className="text-sm font-medium text-slate-700">{student.currentTerm || '—'}</span>
-              </div>
-            </div>
-          </InfoCard>
-        </div>
-
-        {/* Right Column - Academic History */}
-        <div className="lg:col-span-2 space-y-6">
-          <InfoCard title="Enrollment History" icon={BookMarked} accent="#10b981">
-            {student.enrollments && student.enrollments.length > 0 ? (
-              <div className="space-y-3">
-                {student.enrollments.map((enrollment, idx) => (
-                  <motion.div
-                    key={enrollment.id || idx}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 hover:bg-slate-100 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
-                        <School className="w-5 h-5 text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">
-                          {enrollment.class?.name || enrollment.className || 'Class'} 
-                          {enrollment.arm?.name && ` — ${enrollment.arm.name}`}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {enrollment.session?.name || enrollment.sessionName}
-                          {enrollment.term?.name && ` · ${enrollment.term.name}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${
-                        enrollment.status === "ACTIVE" || enrollment.status === "active"
-                          ? "bg-emerald-100 text-emerald-700"
-                          : enrollment.status === "GRADUATED"
-                          ? "bg-purple-100 text-purple-700"
-                          : "bg-amber-100 text-amber-700"
-                      }`}>
-                        {enrollment.status || 'PENDING'}
-                      </span>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                  <School className="w-8 h-8 text-slate-400" />
-                </div>
-                <p className="text-sm font-medium text-slate-600">No enrollment records found</p>
-                <p className="text-xs text-slate-400 mt-1">Enroll this student in a class to get started</p>
-                <button
-                  onClick={() => navigate(`/school-admin/student-management/enroll/${student.id}`)}
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-50 transition-colors"
+            
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                Admission Year
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <select
+                  name="admissionYear"
+                  value={form.admissionYear}
+                  onChange={handleChange}
+                  className="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl border-2 border-slate-200 outline-none focus:border-blue-500 transition-all appearance-none bg-white"
                 >
-                  <BookMarked className="w-4 h-4" /> Enroll Student
+                  {yearOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Change Password */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <Lock className="w-4 h-4 text-green-500" />
+            Change Password
+          </h3>
+          
+          <p className="text-xs text-slate-500 mb-4 p-2.5 rounded-lg bg-blue-50 border border-blue-100">
+            Leave password fields blank to keep the current password unchanged.
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                New Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                    errors.password ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                  }`}
+                  placeholder="Minimum 8 characters"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-            )}
-          </InfoCard>
-
-          {/* Quick Actions */}
-          <InfoCard title="Quick Actions" icon={Activity} accent="#f59e0b">
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => navigate(`/school-admin/results/student/${student.id}`)}
-                className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors text-left"
-              >
-                <FileText className="w-4 h-4 text-blue-600" />
-                <div>
-                  <p className="text-xs font-semibold text-slate-700">View Results</p>
-                  <p className="text-[10px] text-slate-400">Academic performance</p>
-                </div>
-              </button>
-              <button
-                onClick={() => navigate(`/school-admin/attendance/student/${student.id}`)}
-                className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors text-left"
-              >
-                <Activity className="w-4 h-4 text-emerald-600" />
-                <div>
-                  <p className="text-xs font-semibold text-slate-700">Attendance</p>
-                  <p className="text-[10px] text-slate-400">View attendance record</p>
-                </div>
-              </button>
-              <button
-                onClick={() => navigate(`/school-admin/fees/student/${student.id}`)}
-                className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors text-left"
-              >
-                <CreditCard className="w-4 h-4 text-purple-600" />
-                <div>
-                  <p className="text-xs font-semibold text-slate-700">Fee Statement</p>
-                  <p className="text-[10px] text-slate-400">Payment history</p>
-                </div>
-              </button>
-              <button
-                onClick={() => navigate(`/school-admin/timetable/student/${student.id}`)}
-                className="flex items-center gap-2 p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors text-left"
-              >
-                <CalendarIcon className="w-4 h-4 text-amber-600" />
-                <div>
-                  <p className="text-xs font-semibold text-slate-700">Timetable</p>
-                  <p className="text-[10px] text-slate-400">Class schedule</p>
-                </div>
-              </button>
+              {errors.password && (
+                <p className="text-xs text-red-500 mt-1">{errors.password}</p>
+              )}
             </div>
-          </InfoCard>
+            
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                Confirm Password
+              </label>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="confirmPassword"
+                value={form.confirmPassword}
+                onChange={handleChange}
+                className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                  errors.confirmPassword ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                }`}
+                placeholder="Repeat new password"
+              />
+              {errors.confirmPassword && (
+                <p className="text-xs text-red-500 mt-1">{errors.confirmPassword}</p>
+              )}
+              {form.password && form.confirmPassword && form.password === form.confirmPassword && (
+                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" /> Passwords match
+                </p>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+        
+        {/* Form Actions */}
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+          <Link
+            to="/school-admin/student-management"
+            className="px-5 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={saving || uploading}
+            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Saving Changes...' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };

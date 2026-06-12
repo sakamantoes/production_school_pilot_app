@@ -73,8 +73,8 @@ const AppRoutes = () => {
           <Route path="student-management" element={<CreateStudentAdmin />} />
           <Route path="teachers-management" element={<CreateTeacherAdmin />} />
           <Route path="academic-management" element={<AcademicManagement />} />
-          <Route path="teachers/:id" element={<TeacherDetail />} />
-          <Route path="students/:id" element={<StudentDetail />} />
+          <Route path="teachers-management/:id" element={<TeacherDetail />} />
+          <Route path="student-management/:id" element={<StudentDetail />} />
           <Route path="fees" element={<FeeManagement />} />
           <Route path="reports" element={<AnalyticsDashboard />} />
           <Route path="timetable" element={<TimetableManager />} />
