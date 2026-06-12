@@ -562,8 +562,8 @@ const SchoolAdminDashboard = () => {
   const today      = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
 
   const STAT_CARDS = [
-    { title: "Total Students",  value: stats.totalStudents,                       icon: Users,        accent: "#3b82f6", change: "+12%", positive: true, action: "/school-admin/students"   },
-    { title: "Total Teachers",  value: stats.totalTeachers,                       icon: UserCircle,   accent: "#10b981", change: "+5%",  positive: true, action: "/school-admin/teachers"   },
+    { title: "Total Students",  value: stats.totalStudents,                       icon: Users,        accent: "#3b82f6", change: "+12%", positive: true, action: "/school-admin/student-management" },
+    { title: "Total Teachers",  value: stats.totalTeachers,                       icon: UserCircle,   accent: "#10b981", change: "+5%",  positive: true, action: "/school-admin/teachers-management" },
     { title: "Total Revenue",   value: `₦${stats.totalRevenue.toLocaleString()}`, icon: DollarSign,   accent: "#8b5cf6", change: "+18%", positive: true, action: "/school-admin/fees"       },
     { title: "Attendance Rate", value: `${stats.attendanceRate}%`,                icon: TrendingUp,   accent: "#f59e0b", change: "+3%",  positive: true, action: "/school-admin/attendance" },
     { title: "Total Classes",   value: stats.totalClasses,                        icon: GraduationCap,accent: "#ef4444", change: "+2%",  positive: true, action: "/school-admin/classes"    },
@@ -647,21 +647,21 @@ const SchoolAdminDashboard = () => {
       {/* Person lists */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-          <DashCard title="Students" subtitle={`${students.length} total`} action="Manage" onAction={() => navigate("/school-admin/students")} className="!p-0">
+          <DashCard title="Students" subtitle={`${students.length} total`} action="Manage" onAction={() => navigate("/school-admin/student-management")} className="!p-0">
             <div className="-mx-6 -mb-6">
               <PersonList items={students} loading={false} emptyIcon={Users} emptyLabel="No students found"
-                onViewAll={() => navigate("/school-admin/students")}
-                onViewItem={(id) => navigate(`/school-admin/students/${id}`)}
+                onViewAll={() => navigate("/school-admin/student-management")}
+                onViewItem={(id) => navigate(`/school-admin/student-management/${id}`)}
                 totalLabel="students" />
             </div>
           </DashCard>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-          <DashCard title="Teachers" subtitle={`${teachers.length} teaching staff`} action="Manage" onAction={() => navigate("/school-admin/teachers")} className="!p-0">
+          <DashCard title="Teachers" subtitle={`${teachers.length} teaching staff`} action="Manage" onAction={() => navigate("/school-admin/teachers-management")} className="!p-0">
             <div className="-mx-6 -mb-6">
               <PersonList items={teachers} loading={false} emptyIcon={UserCircle} emptyLabel="No teachers found"
-                onViewAll={() => navigate("/school-admin/teachers")}
-                onViewItem={(id) => navigate(`/school-admin/teachers/${id}`)}
+                onViewAll={() => navigate("/school-admin/teachers-management")}
+                onViewItem={(id) => navigate(`/school-admin/teachers-management/${id}`)}
                 totalLabel="teachers" />
             </div>
           </DashCard>

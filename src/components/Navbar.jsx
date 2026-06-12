@@ -18,14 +18,21 @@ import NotificationBell from "./NotificationBell";
 // ─────────────────────────────────────────────────────────────
 
 const UserAvatar = ({ user, size = "sm" }) => {
-  const initials =
-    (user?.firstName?.[0] || user?.first_name?.[0] || "U").toUpperCase();
+  const initials = (
+    user?.firstName?.[0] ||
+    user?.first_name?.[0] ||
+    "U"
+  ).toUpperCase();
   const image = user?.image || user?.profile_image || user?.avatar;
   const dim = size === "lg" ? "w-11 h-11" : "w-8 h-8";
   const font = size === "lg" ? "text-sm" : "text-xs";
 
   return image ? (
-    <img src={image} alt="Profile" className={`${dim} rounded-full object-cover`} />
+    <img
+      src={image}
+      alt="Profile"
+      className={`${dim} rounded-full object-cover`}
+    />
   ) : (
     <div
       className={`${dim} rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0`}
@@ -43,7 +50,11 @@ const DropdownItem = ({ icon: Icon, label, to, onClick, danger }) => {
 
   if (to) {
     return (
-      <Link to={to} onClick={onClick} className={`${base} ${danger ? red : normal}`}>
+      <Link
+        to={to}
+        onClick={onClick}
+        className={`${base} ${danger ? red : normal}`}
+      >
         <Icon className="w-4 h-4 flex-shrink-0" />
         {label}
       </Link>
@@ -62,13 +73,13 @@ const DropdownItem = ({ icon: Icon, label, to, onClick, danger }) => {
 // ─────────────────────────────────────────────────────────────
 
 const Navbar = ({ title, subtitle }) => {
-  const [searchQuery, setSearchQuery]   = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const { user, logout } = useAuth();
-  const navigate         = useNavigate();
-  const dropdownRef      = useRef(null);
+  const navigate = useNavigate();
+  const dropdownRef = useRef(null);
 
   const handleLogout = useCallback(() => {
     setUserMenuOpen(false);
@@ -89,11 +100,12 @@ const Navbar = ({ title, subtitle }) => {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const displayName = user?.firstName && user?.lastName
-    ? `${user.firstName} ${user.lastName}`
-    : user?.first_name && user?.last_name
-    ? `${user.first_name} ${user.last_name}`
-    : user?.name || user?.username || "User";
+  const displayName =
+    user?.firstName && user?.lastName
+      ? `${user.firstName} ${user.lastName}`
+      : user?.first_name && user?.last_name
+        ? `${user.first_name} ${user.last_name}`
+        : user?.name || user?.username || "User";
 
   const roleLabel = user?.role
     ?.replace(/_/g, " ")
@@ -102,20 +114,22 @@ const Navbar = ({ title, subtitle }) => {
   const getProfilePath = () => {
     const role = user?.role?.toLowerCase();
     if (role === "school_admin") return "/school-admin/profile";
-    if (role === "student")      return "/student/profile";
+    if (role === "teacher") return "/teacher/profile";
+    if (role === "student") return "/student/profile";
     return "/profile";
   };
 
   return (
     <div className="w-full flex items-center gap-4 h-full">
-
       {/* ── Page title ── */}
       <div className="flex-1 min-w-0 hidden md:block">
         <h1 className="text-[15px] font-semibold text-slate-800 truncate leading-tight">
           {title}
         </h1>
         {subtitle && (
-          <p className="text-xs text-slate-400 font-medium mt-0.5">{subtitle}</p>
+          <p className="text-xs text-slate-400 font-medium mt-0.5">
+            {subtitle}
+          </p>
         )}
       </div>
 
@@ -123,9 +137,10 @@ const Navbar = ({ title, subtitle }) => {
       <div className="flex-1 md:flex-none md:w-72 xl:w-80">
         <div
           className={`relative flex items-center h-9 rounded-xl border transition-all duration-200
-            ${searchFocused
-              ? "border-blue-500/50 bg-white shadow-sm shadow-blue-500/10"
-              : "border-slate-200 bg-slate-100 hover:border-slate-300"
+            ${
+              searchFocused
+                ? "border-blue-500/50 bg-white shadow-sm shadow-blue-500/10"
+                : "border-slate-200 bg-slate-100 hover:border-slate-300"
             }`}
         >
           <Search className="absolute left-3 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
@@ -160,9 +175,10 @@ const Navbar = ({ title, subtitle }) => {
         <button
           onClick={() => setUserMenuOpen((v) => !v)}
           className={`flex items-center gap-2.5 h-9 pl-1 pr-3 rounded-xl border transition-all duration-200
-            ${userMenuOpen
-              ? "border-blue-500/30 bg-blue-50 shadow-sm"
-              : "border-transparent hover:bg-slate-100 hover:border-slate-200"
+            ${
+              userMenuOpen
+                ? "border-blue-500/30 bg-blue-50 shadow-sm"
+                : "border-transparent hover:bg-slate-100 hover:border-slate-200"
             }`}
         >
           <div className="relative">
@@ -199,8 +215,12 @@ const Navbar = ({ title, subtitle }) => {
                     <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#131c2e]" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{displayName}</p>
-                    <p className="text-xs text-slate-400 truncate mt-0.5">{user?.email}</p>
+                    <p className="text-sm font-semibold text-white truncate">
+                      {displayName}
+                    </p>
+                    <p className="text-xs text-slate-400 truncate mt-0.5">
+                      {user?.email}
+                    </p>
                     <span className="inline-block mt-1.5 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/30">
                       {roleLabel}
                     </span>
@@ -242,7 +262,9 @@ const Navbar = ({ title, subtitle }) => {
               {/* Online indicator footer */}
               <div className="px-4 py-2.5 border-t border-white/8 flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[10px] text-slate-500 font-medium">Active now</span>
+                <span className="text-[10px] text-slate-500 font-medium">
+                  Active now
+                </span>
               </div>
             </motion.div>
           )}

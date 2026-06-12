@@ -35,6 +35,7 @@ import {
   Database,
   Menu,
   X,
+  Eye,
 } from "lucide-react";
 import { Announcement, ControlPoint, MoneyOff } from "@mui/icons-material";
 import FloatingChatbot from "../components/FloatingChatbot";
@@ -118,14 +119,17 @@ const getMenuItems = (role, dashboardPath) => {
 
   if (role === "teacher") return [
     ...base,
-    { text: "My Classes",     icon: School,        path: "/teacher/classes",        group: "Teaching" },
-    { text: "My Subjects",    icon: BookOpen,      path: "/teacher/subjects",       group: "Teaching" },
-    { text: "Mark Attendance",icon: ClipboardCheck,path: "/teacher/attendance",     group: "Teaching" },
-    { text: "Enter Scores",   icon: FileText,      path: "/teacher/enter-scores",   group: "Teaching" },
+    // { text: "My Classes",     icon: School,        path: "/teacher/classes",        group: "Teaching" },
+    // { text: "My Subjects",    icon: BookOpen,      path: "/teacher/subjects",       group: "Teaching" },
+      { text: "My Profile",           icon: User,          path: "/teacher/profile",            group: "Account" },
+    { text: "Mark Attendance",icon: ClipboardCheck,path: "/teacher/attendance",     group: "Attendance" },  
+    { text: "Class Management",    icon: School,      path: "/teacher/class-management",       group: "Teaching" },
+    { text: "View Attendance", icon: Eye, path: "/teacher/attendance/view-attendance", group: "Attendance" },
+    { text: "Upload Results",   icon: FileText,      path: "/teacher/Upload-results",   group: "Teaching" },
+    { text: "Result Status",   icon: FileText,      path: "/teacher/Result-Status",   group: "Teaching" },
     { text: "Timetable",      icon: Clock,         path: "/teacher/timetable",      group: "Teaching" },
-    { text: "Students",       icon: Users,         path: "/teacher/students",       group: "Teaching" },
-    { text: "Submit Results", icon: Award,         path: "/teacher/submit-results", group: "Teaching" },
-    { text: "Lesson Notes",   icon: FileText,      path: "/teacher/lesson-notes",   group: "Teaching" },
+   
+    // { text: "Students",       icon: Users,         path: "/teacher/students",       group: "Teaching" },
     { text: "Announcements",  icon: Announcement,  path: "/teacher/announcements",  group: "Comms" },
   ];
 

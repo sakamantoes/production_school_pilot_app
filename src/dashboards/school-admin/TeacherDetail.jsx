@@ -1,488 +1,617 @@
 // dashboards/school-admin/TeacherDetail.jsx
-import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import toast from "react-hot-toast";
+// ─── Complete Edit Teacher Component ─────────────────────────────────────────
+// Allows editing: firstName, lastName, email, phone, image, isClassHead, headedClassArm
+// Professional design with form validation and image upload
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 import {
   ArrowLeft,
   User,
   Mail,
   Phone,
-  Calendar,
-  BookOpen,
-  Users,
-  Award,
-  Star,
-  PowerOff,
-  Edit2,
-  BookMarked,
-  CheckCircle,
-  XCircle,
-  MapPin,
-  Briefcase,
-  Clock,
-  GraduationCap,
+  Camera,
+  Upload,
+  Save,
+  X,
   Loader2,
-  RefreshCw,
-  ChevronRight,
   AlertCircle,
-  Shield,
-  Smartphone,
-  AtSign,
-  FileText,
-  PieChart,
-  TrendingUp,
-  Calendar as CalendarIcon,
-  ExternalLink,
-} from "lucide-react";
-import { teacherAPI, classAPI, subjectAPI } from "../../services/schoolApi";
+  CheckCircle,
+  Star,
+  Users,
+  BookOpen,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Lock,
+} from 'lucide-react';
+import { teacherAPI, classAPI } from '../../services/schoolApi';
+
+// ─────────────────────────────────────────────────────────────
+// CLOUDINARY CONFIG
+// ─────────────────────────────────────────────────────────────
+const CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+const UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+const cloudUpload = async (file, setUploading) => {
+  if (!CLOUD_NAME || !UPLOAD_PRESET) {
+    throw new Error('Cloudinary is not configured');
+  }
+  setUploading(true);
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('upload_preset', UPLOAD_PRESET);
+  fd.append('folder', 'teachers');
+  try {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+      method: 'POST',
+      body: fd,
+    });
+    const data = await res.json();
+    if (data.secure_url) return data.secure_url;
+    throw new Error(data.error?.message || 'Upload failed');
+  } finally {
+    setUploading(false);
+  }
+};
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────
 const toArray = (res, ...keys) => {
   if (!res) return [];
-  const candidates = [
-    res, res.data, res.data?.data,
-    ...keys.map(k => res[k]),
-    ...keys.map(k => res.data?.[k]),
-  ];
-  for (const c of candidates) { if (Array.isArray(c)) return c; }
+  const candidates = [res, res.data, res.data?.data, ...keys.map(k => res[k]), ...keys.map(k => res.data?.[k])];
+  for (const c of candidates) {
+    if (Array.isArray(c)) return c;
+  }
   return [];
 };
 
-const normaliseTeacher = (t) => {
-  const u = t.user || t;
-  return {
-    id: t.id,
-    userId: t.userId || u.id,
-    firstName: u.firstName || u.first_name || '',
-    lastName: u.lastName || u.last_name || '',
-    email: u.email || '—',
-    phone: u.phone || null,
-    image: u.image || null,
-    isActive: u.isActive !== false,
-    isClassHead: t.isClassHead ?? false,
-    headedClassArm: t.headedClassArm || null,
-    headedClassArmId: t.headedClassArmId || '',
-    employeeId: t.employee_id || t.staff_id || u.employee_id || null,
-    assignments: Array.isArray(t.assignments) ? t.assignments : [],
-    subjects: Array.isArray(t.subjects) ? t.subjects : [],
-    createdAt: t.createdAt || u.createdAt || t.created_at,
-    updatedAt: t.updatedAt || u.updatedAt,
-  };
-};
-
 // ─────────────────────────────────────────────────────────────
-// AVATAR
-// ─────────────────────────────────────────────────────────────
-const PALETTE = ['#3b82f6','#6366f1','#8b5cf6','#ec4899','#10b981','#f59e0b','#ef4444'];
-
-const Avatar = ({ t, size = 80 }) => {
-  const initials = `${t.firstName?.[0] || ''}${t.lastName?.[0] || ''}`.toUpperCase() || 'T';
-  const bg = PALETTE[(t.firstName?.charCodeAt(0) || 0) % PALETTE.length];
-
-  if (t.image) {
-    return (
-      <img
-        src={t.image}
-        alt={`${t.firstName} ${t.lastName}`}
-        style={{ width: size, height: size }}
-        className="rounded-2xl object-cover border-4 border-white shadow-xl flex-shrink-0"
-        onError={e => {
-          e.target.style.display = 'none';
-          e.target.nextSibling && (e.target.nextSibling.style.display = 'flex');
-        }}
-      />
-    );
-  }
-
-  return (
-    <div
-      style={{ width: size, height: size, background: bg, fontSize: size * 0.35 }}
-      className="rounded-2xl flex items-center justify-center text-white font-bold border-4 border-white shadow-xl flex-shrink-0"
-    >
-      {initials}
-    </div>
-  );
-};
-
-const StatusBadge = ({ isActive, isClassHead }) => {
-  if (!isActive)
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
-        <PowerOff className="w-3.5 h-3.5" /> Inactive
-      </span>
-    );
-  if (isClassHead)
-    return (
-      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
-        <Star className="w-3.5 h-3.5" /> Class Head
-      </span>
-    );
-  return (
-    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-      <CheckCircle className="w-3.5 h-3.5" /> Active
-    </span>
-  );
-};
-
-const InfoCard = ({ title, children, icon: Icon, accent = "#3b82f6" }) => (
-  <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-    <div className="flex items-center gap-2.5 px-5 py-4 border-b border-slate-100 bg-slate-50/50">
-      <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${accent}15` }}>
-        <Icon className="w-3.5 h-3.5" style={{ color: accent }} />
-      </div>
-      <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-    </div>
-    <div className="p-5">{children}</div>
-  </div>
-);
-
-const StatBadge = ({ label, value, icon: Icon, color }) => (
-  <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
-    <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${color}15` }}>
-      <Icon className="w-4 h-4" style={{ color }} />
-    </div>
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{label}</p>
-      <p className="text-sm font-bold text-slate-800">{value}</p>
-    </div>
-  </div>
-);
-
-// ─────────────────────────────────────────────────────────────
-// MAIN COMPONENT
+// EDIT TEACHER COMPONENT
 // ─────────────────────────────────────────────────────────────
 const TeacherDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [teacher, setTeacher] = useState(null);
+  
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({
-    totalSubjects: 0,
-    totalClasses: 0,
-    totalStudents: 0,
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [classArms, setClassArms] = useState([]);
+  const [originalTeacher, setOriginalTeacher] = useState(null);
+  
+  const [form, setForm] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    image: '',
+    isActive: true,
+    isClassHead: false,
+    headedClassArmId: '',
+    password: '',
+    confirmPassword: '',
   });
-
-  const fetchTeacher = useCallback(async (isRefresh = false) => {
-    isRefresh ? setRefreshing(true) : setLoading(true);
+  
+  const [errors, setErrors] = useState({});
+  const [imgPreview, setImgPreview] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  
+  // Fetch teacher data and class arms
+  const fetchData = useCallback(async () => {
+    setLoading(true);
     try {
-      const [teacherRes, classesRes, subjectsRes] = await Promise.allSettled([
+      const [teacherRes, classesRes] = await Promise.allSettled([
         teacherAPI.getTeacher(id),
         classAPI.getClasses(),
-        subjectAPI.getSubjects(),
       ]);
-
-      const rawTeacher = teacherRes.status === 'fulfilled' ? teacherRes.value : null;
-      const teacherData = rawTeacher?.data?.data || rawTeacher?.data || rawTeacher;
       
-      if (!teacherData) throw new Error('Teacher not found');
-      
-      const normalized = normaliseTeacher(teacherData);
-      setTeacher(normalized);
-
-      // Calculate stats from assignments
-      const assignments = normalized.assignments || [];
-      const uniqueClasses = new Set(assignments.map(a => a.class?.id || a.classId).filter(Boolean));
-      const uniqueSubjects = new Set(assignments.map(a => a.subject?.id || a.subjectId).filter(Boolean));
-      
-      // Estimate student count (if available from assignments)
-      let totalStudents = 0;
-      if (normalized.headedClassArm?.class?.studentsCount) {
-        totalStudents = normalized.headedClassArm.class.studentsCount;
+      // Process teacher data
+      if (teacherRes.status === 'fulfilled') {
+        const teacherData = teacherRes.value?.data?.data || teacherRes.value?.data || teacherRes.value;
+        setOriginalTeacher(teacherData);
+        
+        const user = teacherData.user || teacherData;
+        setForm({
+          firstName: user.firstName || '',
+          lastName: user.lastName || '',
+          email: user.email || '',
+          phone: user.phone || '',
+          image: user.image || '',
+          isActive: user.isActive !== false,
+          isClassHead: teacherData.isClassHead || false,
+          headedClassArmId: teacherData.headedClassArmId || '',
+          password: '',
+          confirmPassword: '',
+        });
+        setImgPreview(user.image || null);
       }
-
-      setStats({
-        totalSubjects: uniqueSubjects.size,
-        totalClasses: uniqueClasses.size,
-        totalStudents: totalStudents || 0,
+      
+      // Process class arms for dropdown
+      const classes = toArray(classesRes.status === 'fulfilled' ? classesRes.value : null, 'classes');
+      const arms = [];
+      classes.forEach(cls => {
+        if (cls.arms && cls.arms.length) {
+          cls.arms.forEach(arm => {
+            arms.push({
+              id: arm.id,
+              name: `${cls.name} — ${arm.name}`,
+              classId: cls.id,
+              className: cls.name,
+              armName: arm.name,
+            });
+          });
+        }
       });
-
-      if (isRefresh) toast.success('Teacher data refreshed');
-    } catch (err) {
-      console.error('Error fetching teacher:', err);
-      toast.error(err?.response?.data?.message || 'Failed to load teacher details');
-      if (err?.response?.status === 404) navigate('/school-admin/teachers-management');
+      setClassArms(arms);
+      
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      toast.error('Failed to load teacher data');
+      navigate('/school-admin/teachers-management');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [id, navigate]);
-
+  
   useEffect(() => {
-    fetchTeacher();
-  }, [fetchTeacher]);
-
-  const formatDate = (date) => {
-    if (!date) return 'Not available';
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
+    fetchData();
+  }, [fetchData]);
+  
+  // Handle form field changes
+  const handleChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setForm(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
   };
-
-  const getInitials = () => {
-    if (!teacher) return 'T';
-    return `${teacher.firstName?.[0] || ''}${teacher.lastName?.[0] || ''}`.toUpperCase() || 'T';
+  
+  // Handle image upload
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (!['image/jpeg', 'image/png', 'image/jpg', 'image/webp'].includes(file.type)) {
+      setErrors(prev => ({ ...prev, image: 'JPEG, PNG or WEBP only' }));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrors(prev => ({ ...prev, image: 'Max 5 MB' }));
+      return;
+    }
+    
+    // Preview
+    const reader = new FileReader();
+    reader.onloadend = () => setImgPreview(reader.result);
+    reader.readAsDataURL(file);
+    setErrors(prev => ({ ...prev, image: '' }));
+    
+    try {
+      const url = await cloudUpload(file, setUploading);
+      setForm(prev => ({ ...prev, image: url }));
+      setImgPreview(url);
+      toast.success('Photo uploaded successfully');
+    } catch (err) {
+      setErrors(prev => ({ ...prev, image: err.message }));
+      setImgPreview(form.image || null);
+    }
   };
-
+  
+  const removeImage = () => {
+    setForm(prev => ({ ...prev, image: '' }));
+    setImgPreview(null);
+  };
+  
+  // Validate form
+  const validate = () => {
+    const newErrors = {};
+    
+    if (!form.firstName.trim()) newErrors.firstName = 'First name is required';
+    if (!form.lastName.trim()) newErrors.lastName = 'Last name is required';
+    if (!form.email.trim()) newErrors.email = 'Email is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) newErrors.email = 'Invalid email format';
+    
+    if (form.password) {
+      if (form.password.length < 8) newErrors.password = 'Password must be at least 8 characters';
+      if (form.password !== form.confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+    }
+    
+    if (form.isClassHead && !form.headedClassArmId) {
+      newErrors.headedClassArmId = 'Please select a class arm for Class Head';
+    }
+    
+    return newErrors;
+  };
+  
+  // Handle submit - UPDATED to navigate to teachers list page
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const newErrors = validate();
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      toast.error('Please fix the errors before saving');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      const payload = {
+        firstName: form.firstName.trim(),
+        lastName: form.lastName.trim(),
+        email: form.email.trim(),
+        phone: form.phone.trim() || undefined,
+        image: form.image || undefined,
+        isActive: form.isActive,
+        isClassHead: form.isClassHead,
+        headedClassArmId: form.isClassHead ? form.headedClassArmId : undefined,
+      };
+      
+      if (form.password) {
+        payload.password = form.password;
+      }
+      
+      await teacherAPI.updateTeacher(id, payload);
+      toast.success('Teacher profile updated successfully');
+      // Navigate to teachers management list page
+      navigate('/school-admin/teachers-management');
+    } catch (error) {
+      console.error('Update error:', error);
+      const errorMsg = error?.response?.data?.message || error?.response?.data?.errors?.[0]?.message || 'Failed to update teacher';
+      toast.error(errorMsg);
+    } finally {
+      setSaving(false);
+    }
+  };
+  
+  // Handle activate/deactivate
+  const handleToggleActive = async () => {
+    try {
+      if (form.isActive) {
+        await teacherAPI.deleteTeacher(id);
+        toast.success('Teacher deactivated');
+      } else {
+        await teacherAPI.activateTeacher(id);
+        toast.success('Teacher activated');
+      }
+      setForm(prev => ({ ...prev, isActive: !prev.isActive }));
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update status');
+    }
+  };
+  
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
         <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-        <p className="text-slate-500 font-medium">Loading teacher profile...</p>
+        <p className="text-slate-500 font-medium">Loading teacher data...</p>
       </div>
     );
   }
-
-  if (!teacher) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center">
-          <AlertCircle className="w-10 h-10 text-slate-400" />
-        </div>
-        <h2 className="text-xl font-bold text-slate-700">Teacher not found</h2>
-        <p className="text-slate-500">The teacher you're looking for doesn't exist or has been removed.</p>
-        <button
-          onClick={() => navigate('/school-admin/teachers-management')}
-          className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back to Teachers
-        </button>
-      </div>
-    );
-  }
-
+  
   return (
     <div className="space-y-6">
-      {/* Header with back button */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => navigate('/school-admin/teachers-management')}
-          className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors group"
-        >
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-          <span className="text-sm font-medium">Back to Teachers</span>
-        </button>
-        
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => fetchTeacher(true)}
-            disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-4">
+          <Link
+            to="/school-admin/teachers-management"
+            className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors group"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Refreshing...' : 'Refresh'}
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+            <span className="text-sm font-medium">Back to Teachers</span>
+          </Link>
+          <div className="h-6 w-px bg-slate-200" />
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">Edit Teacher</h1>
+            <p className="text-xs text-slate-500">Update teacher information and settings</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleToggleActive}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-colors ${
+              form.isActive
+                ? 'text-amber-700 bg-amber-50 border border-amber-200 hover:bg-amber-100'
+                : 'text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100'
+            }`}
+          >
+            {form.isActive ? 'Deactivate Account' : 'Activate Account'}
           </button>
           <button
-            onClick={() => navigate(`/school-admin/teachers-management/edit/${teacher.id}`)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
+            onClick={handleSubmit}
+            disabled={saving || uploading}
+            className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Edit2 className="w-4 h-4" /> Edit Profile
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
       </div>
-
-      {/* Profile Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden"
-      >
-        <div className="relative h-32 bg-gradient-to-r from-blue-600 to-indigo-700" />
-        
-        <div className="relative px-6 pb-6">
-          <div className="flex flex-col md:flex-row md:items-end gap-4 -mt-12">
-            <Avatar t={teacher} size={100} />
-            
-            <div className="flex-1 flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900">
-                  {teacher.firstName} {teacher.lastName}
-                </h1>
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <StatusBadge isActive={teacher.isActive} isClassHead={teacher.isClassHead} />
-                  {teacher.employeeId && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
-                      <Briefcase className="w-3.5 h-3.5" /> ID: {teacher.employeeId}
-                    </span>
-                  )}
-                </div>
+      
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Profile Image Section */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <Camera className="w-4 h-4 text-blue-500" />
+            Profile Photo
+          </h3>
+          
+          <div className="flex flex-col sm:flex-row items-center gap-6">
+            <div className="relative flex-shrink-0">
+              <div className="w-32 h-32 rounded-2xl overflow-hidden border-2 border-slate-200 bg-slate-100 flex items-center justify-center">
+                {imgPreview ? (
+                  <img src={imgPreview} alt="Preview" className="w-full h-full object-cover" />
+                ) : (
+                  <User className="w-12 h-12 text-slate-300" />
+                )}
               </div>
-              
-              <div className="flex gap-2">
-                <button
-                  onClick={() => window.location.href = `mailto:${teacher.email}`}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
-                >
-                  <Mail className="w-4 h-4" /> Email
-                </button>
-                {teacher.phone && (
+              {uploading && (
+                <div className="absolute inset-0 rounded-2xl bg-white/80 flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                </div>
+              )}
+            </div>
+            
+            <div className="flex-1 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <label className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-xl cursor-pointer transition-colors">
+                  <Upload className="w-4 h-4" />
+                  {uploading ? 'Uploading...' : 'Upload New Photo'}
+                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploading} />
+                </label>
+                {imgPreview && (
                   <button
-                    onClick={() => window.location.href = `tel:${teacher.phone}`}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+                    type="button"
+                    onClick={removeImage}
+                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-rose-600 border border-rose-200 rounded-xl hover:bg-rose-50 transition-colors"
                   >
-                    <Phone className="w-4 h-4" /> Call
+                    <X className="w-4 h-4" /> Remove
                   </button>
                 )}
+              </div>
+              {errors.image && (
+                <p className="text-xs text-rose-500 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" /> {errors.image}
+                </p>
+              )}
+              <p className="text-xs text-slate-400">JPEG, PNG or WEBP — max 5 MB</p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Personal Information */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <User className="w-4 h-4 text-blue-500" />
+            Personal Information
+          </h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                First Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="firstName"
+                value={form.firstName}
+                onChange={handleChange}
+                className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                  errors.firstName ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                }`}
+                placeholder="Enter first name"
+              />
+              {errors.firstName && (
+                <p className="text-xs text-red-500 mt-1">{errors.firstName}</p>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                Last Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                name="lastName"
+                value={form.lastName}
+                onChange={handleChange}
+                className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                  errors.lastName ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                }`}
+                placeholder="Enter last name"
+              />
+              {errors.lastName && (
+                <p className="text-xs text-red-500 mt-1">{errors.lastName}</p>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                Email Address <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  name="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  className={`w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                    errors.email ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                  }`}
+                  placeholder="teacher@school.com"
+                />
+              </div>
+              {errors.email && (
+                <p className="text-xs text-red-500 mt-1">{errors.email}</p>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                Phone Number
+              </label>
+              <div className="relative">
+                <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="tel"
+                  name="phone"
+                  value={form.phone}
+                  onChange={handleChange}
+                  className="w-full pl-10 pr-3.5 py-2.5 text-sm rounded-xl border-2 border-slate-200 outline-none focus:border-blue-500 transition-all"
+                  placeholder="+234 800 000 0000"
+                />
               </div>
             </div>
           </div>
         </div>
-      </motion.div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatBadge
-          label="Subjects Taught"
-          value={stats.totalSubjects}
-          icon={BookOpen}
-          color="#3b82f6"
-        />
-        <StatBadge
-          label="Classes Assigned"
-          value={stats.totalClasses}
-          icon={Users}
-          color="#8b5cf6"
-        />
-        <StatBadge
-          label="Students Impacted"
-          value={stats.totalStudents}
-          icon={GraduationCap}
-          color="#10b981"
-        />
-      </div>
-
-      {/* Two Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Personal Info */}
-        <div className="lg:col-span-1 space-y-6">
-          <InfoCard title="Personal Information" icon={User} accent="#3b82f6">
-            <div className="space-y-3">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Full Name</p>
-                <p className="text-sm font-medium text-slate-800">{teacher.firstName} {teacher.lastName}</p>
+        
+        {/* Role & Status */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <Star className="w-4 h-4 text-amber-500" />
+            Role & Responsibilities
+          </h3>
+          
+          <div className="space-y-4">
+            <label className="flex items-center gap-3 p-3.5 rounded-xl cursor-pointer transition-colors border-2"
+              style={{
+                borderColor: form.isClassHead ? '#f59e0b' : '#e2e8f0',
+                background: form.isClassHead ? '#fffbeb' : 'transparent',
+              }}
+            >
+              <input
+                type="checkbox"
+                name="isClassHead"
+                checked={form.isClassHead}
+                onChange={handleChange}
+                className="w-4 h-4 text-amber-500 rounded focus:ring-amber-500"
+              />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-slate-800">Class Head Teacher</p>
+                <p className="text-xs text-slate-500">Responsible for overall class management and leadership</p>
               </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Email Address</p>
-                <div className="flex items-center gap-2">
-                  <AtSign className="w-3.5 h-3.5 text-slate-400" />
-                  <p className="text-sm text-slate-700">{teacher.email}</p>
-                </div>
-              </div>
-              {teacher.phone && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Phone Number</p>
-                  <div className="flex items-center gap-2">
-                    <Smartphone className="w-3.5 h-3.5 text-slate-400" />
-                    <p className="text-sm text-slate-700">{teacher.phone}</p>
-                  </div>
-                </div>
-              )}
-              {teacher.createdAt && (
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Member Since</p>
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                    <p className="text-sm text-slate-700">{formatDate(teacher.createdAt)}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </InfoCard>
-
-          {teacher.isClassHead && teacher.headedClassArm && (
-            <InfoCard title="Leadership Role" icon={Star} accent="#f59e0b">
-              <div className="space-y-3">
-                <div className="p-3 rounded-xl bg-amber-50 border border-amber-100">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Award className="w-4 h-4 text-amber-600" />
-                    <p className="text-xs font-bold text-amber-700 uppercase">Class Head Teacher</p>
-                  </div>
-                  <p className="text-sm font-semibold text-slate-800">
-                    {teacher.headedClassArm.class?.name || 'Class'} — {teacher.headedClassArm.name || 'Arm'}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Responsible for overall class management, student welfare, and academic oversight.
-                  </p>
-                </div>
-              </div>
-            </InfoCard>
-          )}
-        </div>
-
-        {/* Right Column - Assignments & Subjects */}
-        <div className="lg:col-span-2 space-y-6">
-          <InfoCard title="Subject Assignments" icon={BookMarked} accent="#10b981">
-            {teacher.assignments && teacher.assignments.length > 0 ? (
-              <div className="space-y-3">
-                {teacher.assignments.map((assignment, idx) => (
-                  <motion.div
-                    key={assignment.id || idx}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 hover:bg-slate-100 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                        <BookOpen className="w-5 h-5 text-blue-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">
-                          {assignment.subject?.name || assignment.subjectName || 'Subject'}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {assignment.class?.name || assignment.className}
-                          {assignment.arm?.name && ` — ${assignment.arm.name}`}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">
-                        Active
-                      </span>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                  <BookOpen className="w-8 h-8 text-slate-400" />
-                </div>
-                <p className="text-sm font-medium text-slate-600">No subjects assigned yet</p>
-                <p className="text-xs text-slate-400 mt-1">Assign subjects to this teacher to get started</p>
-                <button
-                  onClick={() => navigate(`/school-admin/teachers-management/assign/${teacher.id}`)}
-                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-50 transition-colors"
+            </label>
+            
+            {form.isClassHead && (
+              <div className="ml-6 pl-4 border-l-2 border-amber-200">
+                <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                  Headed Class Arm <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="headedClassArmId"
+                  value={form.headedClassArmId}
+                  onChange={handleChange}
+                  className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                    errors.headedClassArmId ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                  }`}
                 >
-                  <BookMarked className="w-4 h-4" /> Assign Subjects
-                </button>
+                  <option value="">Select class arm</option>
+                  {classArms.map(arm => (
+                    <option key={arm.id} value={arm.id}>{arm.name}</option>
+                  ))}
+                </select>
+                {errors.headedClassArmId && (
+                  <p className="text-xs text-red-500 mt-1">{errors.headedClassArmId}</p>
+                )}
               </div>
             )}
-          </InfoCard>
-
-          {/* Performance Summary (placeholder - can be extended) */}
-          <InfoCard title="Performance Summary" icon={TrendingUp} accent="#8b5cf6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-3 rounded-xl bg-slate-50">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Subjects Load</p>
-                <p className="text-2xl font-bold text-slate-800 mt-1">{stats.totalSubjects}</p>
-                <p className="text-xs text-slate-500 mt-1">Active subjects currently teaching</p>
-              </div>
-              <div className="p-3 rounded-xl bg-slate-50">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Classes Handled</p>
-                <p className="text-2xl font-bold text-slate-800 mt-1">{stats.totalClasses}</p>
-                <p className="text-xs text-slate-500 mt-1">Different classes assigned</p>
-              </div>
-            </div>
-          </InfoCard>
+          </div>
         </div>
-      </div>
+        
+        {/* Change Password */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+          <h3 className="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <Lock className="w-4 h-4 text-green-500" />
+            Change Password
+          </h3>
+          
+          <p className="text-xs text-slate-500 mb-4 p-2.5 rounded-lg bg-blue-50 border border-blue-100">
+            Leave password fields blank to keep the current password unchanged.
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                New Password
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  value={form.password}
+                  onChange={handleChange}
+                  className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                    errors.password ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                  }`}
+                  placeholder="Minimum 8 characters"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              {errors.password && (
+                <p className="text-xs text-red-500 mt-1">{errors.password}</p>
+              )}
+            </div>
+            
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-slate-500 mb-1">
+                Confirm Password
+              </label>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                name="confirmPassword"
+                value={form.confirmPassword}
+                onChange={handleChange}
+                className={`w-full px-3.5 py-2.5 text-sm rounded-xl border-2 outline-none transition-all ${
+                  errors.confirmPassword ? 'border-red-300 bg-red-50' : 'border-slate-200 focus:border-blue-500'
+                }`}
+                placeholder="Repeat new password"
+              />
+              {errors.confirmPassword && (
+                <p className="text-xs text-red-500 mt-1">{errors.confirmPassword}</p>
+              )}
+              {form.password && form.confirmPassword && form.password === form.confirmPassword && (
+                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                  <CheckCircle className="w-3 h-3" /> Passwords match
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+        
+        {/* Form Actions */}
+        <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+          <Link
+            to="/school-admin/teachers-management"
+            className="px-5 py-2.5 text-sm font-semibold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={saving || uploading}
+            className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Saving Changes...' : 'Save Changes'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 };
