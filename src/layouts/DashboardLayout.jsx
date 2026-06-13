@@ -126,7 +126,6 @@ const getMenuItems = (role, dashboardPath) => {
     { text: "Class Management",    icon: School,      path: "/teacher/class-management",       group: "Teaching" },
     { text: "View Attendance", icon: Eye, path: "/teacher/attendance/view-attendance", group: "Attendance" },
     { text: "Upload Results",   icon: FileText,      path: "/teacher/Upload-results",   group: "Teaching" },
-    { text: "Result Status",   icon: FileText,      path: "/teacher/Result-Status",   group: "Teaching" },
     { text: "Timetable",      icon: Clock,         path: "/teacher/timetable",      group: "Teaching" },
    
     // { text: "Students",       icon: Users,         path: "/teacher/students",       group: "Teaching" },
