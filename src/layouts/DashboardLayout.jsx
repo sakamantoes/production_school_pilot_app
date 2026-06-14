@@ -134,13 +134,12 @@ const getMenuItems = (role, dashboardPath) => {
 
   if (role === "student") return [
     ...base,
-    { text: "Overview",          icon: Activity,      path: "/student/dashboard",   group: "Overview" },
     { text: "My Results",        icon: Award,         path: "/student/results",     group: "Academics" },
-    { text: "My Profile",        icon: User,          path: "/student/profile",     group: "Academics" },
+    { text: "My Profile",        icon: User,          path: "/student/profile",     group: "Account" },
     { text: "Timetable",         icon: Clock,         path: "/student/timetable",   group: "Academics" },
     { text: "Attendance Record", icon: TrendingUp,    path: "/student/attendance",  group: "Academics" },
-    { text: "Fee Statement",     icon: CreditCard,    path: "/student/studentFees", group: "Finance" },
-    { text: "Assignments",       icon: FileText,      path: "/student/assignments", group: "Academics" },
+    { text: "Fee Management",     icon: CreditCard,    path: "/student/studentFees", group: "Finance" },
+    // { text: "Assignments",       icon: FileText,      path: "/student/assignments", group: "Academics" },
     { text: "Announcements",     icon: Announcement,  path: "/student/announcements",group: "Comms" },
     { text: "Class Schedule",    icon: Calendar,      path: "/student/schedule",    group: "Academics" },
   ];

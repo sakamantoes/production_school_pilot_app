@@ -18,6 +18,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { notificationAPI } from '../services/schoolApi';
 import { teacherApi } from '../services/teacherApi';
+import {studentApi} from '../services/studentApi';
 
 // Helper to extract array from response
 const toArray = (res, ...keys) => {
@@ -557,7 +558,7 @@ const NotificationBell = () => {
         fetchedNotifications = toArray(res, 'notifications', 'data');
       }
       else if (role === 'student') {
-        const res = await notificationAPI.getMyNotifications();
+        const res = await studentApi.getNotifications();
         fetchedNotifications = toArray(res, 'notifications', 'data');
       }
       
@@ -583,9 +584,9 @@ const NotificationBell = () => {
       if (role === 'teacher') {
         await teacherApi.markNotificationRead(notificationId);
       } 
-      else if (role === 'student') {
-        await notificationAPI.markNotificationAsRead(notificationId);
-      }
+else if (role === 'student') {
+  await studentApi.markNotificationRead(notificationId);
+}
       
       setNotifications(prev => {
         const updated = prev.map(n => 
@@ -651,7 +652,7 @@ const NotificationBell = () => {
       const promises = unreadNotifications.map(n => 
         role === 'teacher' 
           ? teacherApi.markNotificationRead(n.id) 
-          : notificationAPI.markNotificationAsRead(n.id)
+          : studentApi.markNotificationRead(n.id)
       );
       await Promise.all(promises);
       

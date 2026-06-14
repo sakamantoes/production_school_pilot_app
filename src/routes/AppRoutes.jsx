@@ -34,7 +34,7 @@ import CreateNotification from "../dashboards/school-admin/CreateNotification";
 import TeacherDashboard from "../dashboards/teacher/TeacherDashboard";
 import TeacherResultUpload from "../dashboards/teacher/TeacherResultUpload";
 import TeacherTimeTable from "../dashboards/teacher/TeacherTimeTable";
-import TeacherAttendance from '../dashboards/teacher/TeaccherAttendance'
+import TeacherAttendance from "../dashboards/teacher/TeaccherAttendance";
 import TeacherAttendanceVeiw from "../dashboards/teacher/TeacherAttendanceVeiw";
 import TeacherAnnouncements from "../dashboards/teacher/TeacherAnnouncements";
 import TeacherClassManagement from "../dashboards/teacher/TeacherClassManagement";
@@ -42,8 +42,13 @@ import TeacherProfile from "../dashboards/teacher/TeacherProfile";
 
 // Student
 import StudentDashboard from "../dashboards/student/StudentDashboard";
-
-
+import StudentResult from "../dashboards/student/StudentResult";
+import StudentProfile from "../dashboards/student/StudentProfile";
+import StudentTimeTable from "../dashboards/student/StudentTimeTable";
+import StudentAttendance from "../dashboards/student/StudentAttendance";
+import StudentFeeManagement from "../dashboards/student/StudentFeeManagement";
+import StudentAnnouncements from "../dashboards/student/StudentAnnouncements";
+import StudentClassSchedule from "../dashboards/student/StudentClassSchedule";
 
 const AppRoutes = () => {
   return (
@@ -96,9 +101,12 @@ const AppRoutes = () => {
           <Route path="Upload-results" element={<TeacherResultUpload />} />
           <Route path="timetable" element={<TeacherTimeTable />} />
           <Route path="attendance" element={<TeacherAttendance />} />
-          <Route path="attendance/view-attendance" element={<TeacherAttendanceVeiw />} />
-          <Route path='announcements' element={<TeacherAnnouncements />} />
-          <Route path='class-management' element={<TeacherClassManagement />} />
+          <Route
+            path="attendance/view-attendance"
+            element={<TeacherAttendanceVeiw />}
+          />
+          <Route path="announcements" element={<TeacherAnnouncements />} />
+          <Route path="class-management" element={<TeacherClassManagement />} />
           <Route path="profile" element={<TeacherProfile />} />
         </Route>
 
@@ -106,6 +114,13 @@ const AppRoutes = () => {
         <Route path="/student" element={<DashboardLayout />}>
           <Route index element={<StudentDashboard />} />
           <Route path="dashboard" element={<StudentDashboard />} />
+          <Route path="results" element={<StudentResult />} />
+          <Route path="profile" element={<StudentProfile />} />
+          <Route path="timetable" element={<StudentTimeTable />} />
+          <Route path="attendance" element={<StudentAttendance />} />
+          <Route path="studentFees" element={<StudentFeeManagement />} />
+          <Route path="announcements" element={<StudentAnnouncements />} />
+          <Route path="schedule" element={<StudentClassSchedule />} />
         </Route>
       </Route>
 
