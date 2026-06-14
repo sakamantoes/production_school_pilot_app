@@ -33,7 +33,6 @@ import CreateNotification from "../dashboards/school-admin/CreateNotification";
 // Teacher
 import TeacherDashboard from "../dashboards/teacher/TeacherDashboard";
 import TeacherResultUpload from "../dashboards/teacher/TeacherResultUpload";
-import TeacherUploadStatus from "../dashboards/teacher/TeacherUploadStatus";
 import TeacherTimeTable from "../dashboards/teacher/TeacherTimeTable";
 import TeacherAttendance from '../dashboards/teacher/TeaccherAttendance'
 import TeacherAttendanceVeiw from "../dashboards/teacher/TeacherAttendanceVeiw";
@@ -95,7 +94,6 @@ const AppRoutes = () => {
           <Route index element={<TeacherDashboard />} />
           <Route path="dashboard" element={<TeacherDashboard />} />
           <Route path="Upload-results" element={<TeacherResultUpload />} />
-          <Route path="Result-Status" element={<TeacherUploadStatus />} />
           <Route path="timetable" element={<TeacherTimeTable />} />
           <Route path="attendance" element={<TeacherAttendance />} />
           <Route path="attendance/view-attendance" element={<TeacherAttendanceVeiw />} />

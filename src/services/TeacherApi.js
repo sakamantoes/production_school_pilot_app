@@ -4,18 +4,6 @@
 
 import api from "./mainApi";
 
-// Helper to extract array from response
-const toArray = (res, ...keys) => {
-  if (!res) return [];
-  const candidates = [
-    res, res.data, res.data?.data,
-    ...keys.map(k => res[k]),
-    ...keys.map(k => res.data?.[k]),
-  ];
-  for (const c of candidates) { if (Array.isArray(c)) return c; }
-  return [];
-};
-
 // ==================== TEACHER API ====================
 
 export const teacherApi = {
@@ -182,49 +170,5 @@ export const teacherApi = {
     return response.data;
   },
 };
-
-// ==================== HELPER FUNCTIONS ====================
-
-/**
- * Get teacher's assigned classes as array
- */
-export const getTeacherClasses = async () => {
-  const res = await teacherApi.getAssignedClasses();
-  return toArray(res, 'classes', 'data');
-};
-
-/**
- * Get teacher's assigned subjects as array
- */
-export const getTeacherSubjects = async () => {
-  const res = await teacherApi.getAssignedSubjects();
-  return toArray(res, 'subjects', 'data');
-};
-
-/**
- * Get teacher's timetable as array
- */
-export const getTeacherTimetable = async () => {
-  const res = await teacherApi.getTimetable();
-  return toArray(res, 'entries', 'timetable', 'data');
-};
-
-/**
- * Get announcements for teacher
- */
-export const getTeacherAnnouncements = async () => {
-  const res = await teacherApi.getAnnouncements();
-  return toArray(res, 'announcements', 'data');
-};
-
-/**
- * Get notifications for teacher
- */
-export const getTeacherNotifications = async () => {
-  const res = await teacherApi.getNotifications();
-  return toArray(res, 'notifications', 'data');
-};
-
-// ==================== DEFAULT EXPORT ====================
 
 export default teacherApi;
