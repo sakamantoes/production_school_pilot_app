@@ -17,6 +17,17 @@ export const teacherApi = {
     return response.data;
   },
 
+  // ── Students ─────────────────────────────────────────────
+  /**
+   * Get students assigned to the teacher
+   * GET /teacher/students
+   * Returns students who are enrolled in classes/subjects taught by this teacher
+   */
+  getStudents: async () => {
+    const response = await api.get("/teacher/students");
+    return response.data;
+  },
+
   // ── Classes & Subjects ──────────────────────────────────
   /**
    * Get assigned classes for the teacher
