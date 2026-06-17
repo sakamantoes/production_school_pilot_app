@@ -1,6 +1,8 @@
 // pages/teacher/TeacherClassManagement.jsx
 // ─── Professional Teacher Class Management Component ───────────────────────────
 // Features: View assigned classes, subjects, and students with full CRUD operations
+// Updated to use teacherApi.getStudents() for fetching students
+// FIXED: Student status detection uses user.isActive from API response
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -16,29 +18,6 @@ import {
   Grid3x3, List, Maximize2, Minimize2, Sparkles, Crown, X
 } from 'lucide-react';
 import { teacherApi } from '../../services/teacherApi';
-// FIX: Corrected import path - assuming classArmAPI is part of schoolApi or needs correct path
-// If the file exists at '../../services/school', ensure it exports classArmAPI.
-// As a fallback, we can create a mock or import from the correct location.
-// Let's assume the correct import is from '../../services/schoolApi' or we define it here.
-// For this fix, I'll comment out the broken import and define a mock or alternative.
-// You should replace this with the actual correct path.
-// import { classArmAPI } from '../../services/school'; // <-- BROKEN PATH
-
-// Placeholder/Mock for classArmAPI - REPLACE WITH ACTUAL IMPORT
-// This is to prevent the error. Replace with your actual API service.
-const classArmAPI = {
-  async getClassArms() {
-    // Mock implementation - replace with actual API call
-    console.warn("Using mock classArmAPI.getClassArms - replace with actual implementation");
-    return { data: { data: [] } };
-  },
-  async getClassArmStudents(classArmId) {
-    // Mock implementation - replace with actual API call
-    console.warn("Using mock classArmAPI.getClassArmStudents - replace with actual implementation");
-    return { data: { data: [] } };
-  }
-};
-// END OF MOCK - REPLACE WITH YOUR ACTUAL IMPORT
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
@@ -172,9 +151,18 @@ const SubjectCard = ({ subject, onClick }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// STUDENT CARD COMPONENT
+// STUDENT CARD COMPONENT - FIXED status detection
 // ─────────────────────────────────────────────────────────────
 const StudentCard = ({ student, onClick }) => {
+  // Handle both API response formats (user nested or flat)
+  const firstName = student.user?.firstName || student.firstName || '';
+  const lastName = student.user?.lastName || student.lastName || '';
+  const email = student.user?.email || student.email || '';
+  const studentId = student.studentId || student.id?.slice(0, 8) || '';
+  // ─── FIX: Status is in user.isActive ───
+  const isActive = student.user?.isActive ?? student.isActive ?? true;
+  const status = isActive ? 'active' : 'inactive';
+  
   return (
     <motion.div
       whileHover={{ y: -4, scale: 1.02 }}
@@ -185,22 +173,22 @@ const StudentCard = ({ student, onClick }) => {
       <div className="flex items-start gap-3">
         <div className="relative">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
-            {student.firstName?.[0] || student.name?.[0] || 'S'}
+            {firstName?.[0] || lastName?.[0] || 'S'}
           </div>
           <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-            student.status === 'active' ? 'bg-emerald-500' : 'bg-red-500'
+            isActive ? 'bg-emerald-500' : 'bg-red-500'
           }`} />
         </div>
         
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-slate-800 group-hover:text-purple-600 transition-colors truncate">
-            {student.firstName} {student.lastName}
+            {firstName} {lastName}
           </h3>
-          <p className="text-xs text-slate-500 font-mono">ID: {student.studentId || student.id?.slice(0, 8)}</p>
-          {student.email && (
+          <p className="text-xs text-slate-500 font-mono">ID: {studentId}</p>
+          {email && (
             <div className="flex items-center gap-1 mt-1 text-xs text-slate-400">
               <Mail className="w-3 h-3" />
-              <span className="truncate">{student.email}</span>
+              <span className="truncate">{email}</span>
             </div>
           )}
         </div>
@@ -216,10 +204,20 @@ const StudentCard = ({ student, onClick }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// STUDENT DETAILS MODAL
+// STUDENT DETAILS MODAL - FIXED status detection
 // ─────────────────────────────────────────────────────────────
 const StudentDetailsModal = ({ student, isOpen, onClose }) => {
   if (!isOpen || !student) return null;
+
+  // Handle both API response formats
+  const firstName = student.user?.firstName || student.firstName || '';
+  const lastName = student.user?.lastName || student.lastName || '';
+  const email = student.user?.email || student.email || '';
+  const phone = student.user?.phone || student.phone || '';
+  const studentId = student.studentId || student.id?.slice(0, 8) || '';
+  // ─── FIX: Status is in user.isActive ───
+  const isActive = student.user?.isActive ?? student.isActive ?? true;
+  const status = isActive ? 'active' : 'inactive';
 
   return (
     <motion.div
@@ -264,22 +262,22 @@ const StudentDetailsModal = ({ student, isOpen, onClose }) => {
           {/* Profile Section */}
           <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-purple-50/50 to-transparent rounded-xl">
             <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white font-bold text-2xl shadow-lg">
-              {student.firstName?.[0] || student.name?.[0] || 'S'}
+              {firstName?.[0] || lastName?.[0] || 'S'}
             </div>
             <div>
               <h3 className="font-bold text-slate-800 text-xl">
-                {student.firstName} {student.lastName}
+                {firstName} {lastName}
               </h3>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                  {student.studentId || 'N/A'}
+                  {studentId}
                 </span>
                 <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  student.status === 'active' 
+                  isActive 
                     ? 'bg-emerald-100 text-emerald-700' 
                     : 'bg-red-100 text-red-700'
                 }`}>
-                  {student.status || 'Active'}
+                  {status}
                 </span>
               </div>
             </div>
@@ -287,21 +285,21 @@ const StudentDetailsModal = ({ student, isOpen, onClose }) => {
 
           {/* Contact Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {student.email && (
+            {email && (
               <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
                 <Mail className="w-4 h-4 text-purple-500" />
                 <div>
                   <p className="text-xs text-slate-500">Email</p>
-                  <p className="text-sm font-medium text-slate-700">{student.email}</p>
+                  <p className="text-sm font-medium text-slate-700">{email}</p>
                 </div>
               </div>
             )}
-            {student.phone && (
+            {phone && (
               <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
                 <Phone className="w-4 h-4 text-purple-500" />
                 <div>
                   <p className="text-xs text-slate-500">Phone</p>
-                  <p className="text-sm font-medium text-slate-700">{student.phone}</p>
+                  <p className="text-sm font-medium text-slate-700">{phone}</p>
                 </div>
               </div>
             )}
@@ -439,43 +437,43 @@ const TeacherClassManagement = () => {
     }
   }, []);
 
-  // ── Fetch Students from Selected Class ─────────────────
-  const fetchStudents = useCallback(async (classArmId) => {
-    if (!classArmId) {
-      setStudents([]);
-      setFilteredStudents([]);
-      return;
-    }
-    
+  // ── Fetch Students using teacherApi.getStudents() ──────
+  const fetchStudents = useCallback(async () => {
     setLoading(true);
     try {
-      // FIX: Using the correct API endpoint to fetch students by class arm
-      // Assuming classArmAPI has a method getClassArmStudents
-      // If not, you can use a more generic endpoint
-      let studentsData = [];
+      const response = await teacherApi.getStudents();
+      const data = toArray(response, 'data', 'students');
       
-      // Try to use the specific method if available
-      if (classArmAPI.getClassArmStudents) {
-        const response = await classArmAPI.getClassArmStudents(classArmId);
-        studentsData = toArray(response, 'data', 'students');
-      } else {
-        // Fallback: Fetch all class arms and find the one we need
-        const response = await classArmAPI.getClassArms();
-        const classArms = toArray(response, 'data', 'classArms');
-        const foundClassArm = classArms.find(ca => ca.id === classArmId);
-        studentsData = foundClassArm?.students || [];
+      // Handle both response formats: direct array or nested in data
+      let studentsData = data;
+      if (!Array.isArray(studentsData)) {
+        studentsData = response?.data?.data || response?.data || response || [];
+        if (!Array.isArray(studentsData)) {
+          studentsData = [];
+        }
       }
       
       setStudents(studentsData);
       setFilteredStudents(studentsData);
+      
+      // ─── FIX: Count active students using user.isActive ───
+      const activeCount = studentsData.filter(s => {
+        const isActive = s.user?.isActive ?? s.isActive ?? true;
+        return isActive;
+      }).length;
+      
       setStatistics(prev => ({ 
         ...prev, 
         totalStudents: studentsData.length,
-        activeStudents: studentsData.filter(s => s.status === 'active').length 
+        activeStudents: activeCount
       }));
+      
+      if (studentsData.length > 0) {
+        toast.success(`Loaded ${studentsData.length} students`);
+      }
     } catch (error) {
       console.error('Error fetching students:', error);
-      toast.error('Failed to load students');
+      toast.error(error?.response?.data?.message || 'Failed to load students');
       setStudents([]);
       setFilteredStudents([]);
     } finally {
@@ -492,9 +490,11 @@ const TeacherClassManagement = () => {
     
     const term = searchTerm.toLowerCase();
     const filtered = students.filter(student => {
-      const fullName = `${student.firstName || ''} ${student.lastName || ''}`.toLowerCase();
+      const firstName = student.user?.firstName || student.firstName || '';
+      const lastName = student.user?.lastName || student.lastName || '';
+      const fullName = `${firstName} ${lastName}`.toLowerCase();
       const studentId = (student.studentId || '').toLowerCase();
-      const email = (student.email || '').toLowerCase();
+      const email = (student.user?.email || student.email || '').toLowerCase();
       return fullName.includes(term) || studentId.includes(term) || email.includes(term);
     });
     
@@ -507,7 +507,8 @@ const TeacherClassManagement = () => {
     setSelectedClass(classItem);
     setSelectedSubject(null);
     setActiveTab('students');
-    fetchStudents(classItem.id);
+    // Fetch all students when a class is selected
+    fetchStudents();
     toast.success(`Showing students for ${classItem.name}`);
   };
 
@@ -530,7 +531,7 @@ const TeacherClassManagement = () => {
     await Promise.all([
       fetchAssignedClasses(),
       fetchAssignedSubjects(),
-      selectedClass && fetchStudents(selectedClass.id)
+      activeTab === 'students' && fetchStudents()
     ]);
     setRefreshing(false);
     toast.success('Data refreshed successfully');
@@ -624,7 +625,7 @@ const TeacherClassManagement = () => {
             icon={Users}
             color="text-purple-600"
             bgColor="bg-purple-50"
-            subtitle={selectedClass ? `in ${selectedClass.name}` : 'Select a class to view'}
+            subtitle={selectedClass ? `in ${selectedClass.name}` : 'All assigned students'}
           />
           <StatsCard
             title="Active Students"
@@ -675,16 +676,21 @@ const TeacherClassManagement = () => {
             </button>
             
             <button
-              onClick={() => setActiveTab('students')}
-              disabled={!selectedClass && assignedClasses.length > 0}
+              onClick={() => {
+                setActiveTab('students');
+                // Fetch students when switching to students tab
+                if (students.length === 0) {
+                  fetchStudents();
+                }
+              }}
               className={`flex items-center gap-2 px-6 py-4 font-medium transition-all relative ${
                 activeTab === 'students'
                   ? 'text-purple-600'
                   : 'text-slate-500 hover:text-slate-700'
-              } ${!selectedClass && assignedClasses.length > 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+              }`}
             >
               <Users className="w-4 h-4" />
-              <span>Students</span>
+              <span>All Students</span>
               {activeTab === 'students' && (
                 <motion.div
                   layoutId="activeTab"
@@ -752,11 +758,11 @@ const TeacherClassManagement = () => {
         )}
 
         {/* Content Display */}
-        {loading && activeTab === 'students' && !selectedClass ? (
+        {loading && activeTab === 'students' ? (
           <div className="flex items-center justify-center py-20">
             <div className="text-center">
               <Loader2 className="w-12 h-12 animate-spin text-emerald-500 mx-auto mb-4" />
-              <p className="text-slate-500">Loading...</p>
+              <p className="text-slate-500">Loading students...</p>
             </div>
           </div>
         ) : (
@@ -865,31 +871,17 @@ const TeacherClassManagement = () => {
               </>
             )}
 
-            {/* Students Grid/List */}
+            {/* Students Grid/List - FIXED status display */}
             {activeTab === 'students' && (
               <>
-                {!selectedClass ? (
-                  <div className="text-center py-20 bg-white rounded-2xl border border-slate-100">
-                    <div className="w-24 h-24 rounded-full bg-purple-50 flex items-center justify-center mx-auto mb-4">
-                      <Users className="w-12 h-12 text-purple-300" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-slate-600 mb-2">Select a class first</h3>
-                    <p className="text-slate-400">Please select a class from the Classes tab to view students.</p>
-                    <button
-                      onClick={() => setActiveTab('classes')}
-                      className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
-                    >
-                      Go to Classes
-                    </button>
-                  </div>
-                ) : filteredStudents.length === 0 ? (
+                {filteredStudents.length === 0 ? (
                   <div className="text-center py-20 bg-white rounded-2xl border border-slate-100">
                     <div className="w-24 h-24 rounded-full bg-purple-50 flex items-center justify-center mx-auto mb-4">
                       <Users className="w-12 h-12 text-purple-300" />
                     </div>
                     <h3 className="text-lg font-semibold text-slate-600 mb-2">No students found</h3>
                     <p className="text-slate-400">
-                      {searchTerm ? 'No students match your search criteria.' : 'No students are enrolled in this class yet.'}
+                      {searchTerm ? 'No students match your search criteria.' : 'You have no students assigned to you yet.'}
                     </p>
                   </div>
                 ) : viewMode === 'grid' ? (
@@ -904,42 +896,59 @@ const TeacherClassManagement = () => {
                   </div>
                 ) : (
                   <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-                    {paginatedData.map((student, index) => (
-                      <motion.div
-                        key={student.id || index}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        onClick={() => handleStudentSelect(student)}
-                        className="flex items-center justify-between p-4 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-all"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white font-bold">
-                              {student.firstName?.[0] || student.name?.[0] || 'S'}
+                    {paginatedData.map((student, index) => {
+                      const firstName = student.user?.firstName || student.firstName || '';
+                      const lastName = student.user?.lastName || student.lastName || '';
+                      const email = student.user?.email || student.email || '';
+                      const studentId = student.studentId || student.id?.slice(0, 8) || '';
+                      // ─── FIX: Status is in user.isActive ───
+                      const isActive = student.user?.isActive ?? student.isActive ?? true;
+                      const status = isActive ? 'active' : 'inactive';
+                      
+                      return (
+                        <motion.div
+                          key={student.id || index}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.05 }}
+                          onClick={() => handleStudentSelect(student)}
+                          className="flex items-center justify-between p-4 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-all"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="relative">
+                              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center text-white font-bold">
+                                {firstName?.[0] || lastName?.[0] || 'S'}
+                              </div>
+                              <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
+                                isActive ? 'bg-emerald-500' : 'bg-red-500'
+                              }`} />
                             </div>
-                            <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
-                              student.status === 'active' ? 'bg-emerald-500' : 'bg-red-500'
-                            }`} />
-                          </div>
-                          <div>
-                            <p className="font-semibold text-slate-800">
-                              {student.firstName} {student.lastName}
-                            </p>
-                            <p className="text-xs text-slate-500 font-mono">{student.studentId || 'N/A'}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          {student.email && (
-                            <div className="hidden md:flex items-center gap-1 text-xs text-slate-500">
-                              <Mail className="w-3 h-3" />
-                              <span>{student.email}</span>
+                            <div>
+                              <p className="font-semibold text-slate-800">
+                                {firstName} {lastName}
+                              </p>
+                              <p className="text-xs text-slate-500 font-mono">{studentId}</p>
                             </div>
-                          )}
-                          <Eye className="w-4 h-4 text-slate-400" />
-                        </div>
-                      </motion.div>
-                    ))}
+                          </div>
+                          <div className="flex items-center gap-4">
+                            {email && (
+                              <div className="hidden md:flex items-center gap-1 text-xs text-slate-500">
+                                <Mail className="w-3 h-3" />
+                                <span className="truncate max-w-[150px]">{email}</span>
+                              </div>
+                            )}
+                            <div className={`text-xs px-2 py-1 rounded-full ${
+                              isActive 
+                                ? 'bg-emerald-100 text-emerald-700' 
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {status}
+                            </div>
+                            <Eye className="w-4 h-4 text-slate-400" />
+                          </div>
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 )}
               </>
