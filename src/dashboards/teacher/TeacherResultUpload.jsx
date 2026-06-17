@@ -1,8 +1,6 @@
 // pages/teacher/TeacherResultUpload.jsx
 // ─── Production-ready Result Upload — matches school admin design system ──────
-// Dark navy hero · white stat cards with colored top borders · slide drawers
-// ✨ ADDED: Manual "Create Result" button with modal for individual entry
-// ✨ FIXED: Proper API integration with teacherApi
+// FIXED: Added enrollmentId and termId to the result payload
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -51,20 +49,25 @@ const STATUS_META = {
 };
 
 const PALETTE = ['#3b82f6','#6366f1','#8b5cf6','#ec4899','#10b981','#f59e0b'];
-const initials = (s) => {
-  const u = s.user || s;
-  const f = u.firstName?.[0] || '';
-  const l = u.lastName?.[0]  || '';
-  return (f + l).toUpperCase() || 'S';
+
+// ─── Helper functions to handle nested user object ──────────────────────────
+const getFirstName = (s) => s?.user?.firstName || s?.firstName || '';
+const getLastName = (s) => s?.user?.lastName || s?.lastName || '';
+const getFullName = (s) => {
+  const first = getFirstName(s);
+  const last = getLastName(s);
+  return `${first} ${last}`.trim() || 'Unknown';
 };
-const avatarBg = (s) => {
-  const u = s.user || s;
-  return PALETTE[(u.firstName?.charCodeAt(0) || 0) % PALETTE.length];
+const getInitials = (s) => {
+  const first = getFirstName(s)[0] || '';
+  const last = getLastName(s)[0] || '';
+  return (first + last).toUpperCase() || 'S';
 };
-const fullName = (s) => {
-  const u = s.user || s;
-  return `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unknown';
+const getAvatarBg = (s) => {
+  const name = getFirstName(s) || 'S';
+  return PALETTE[(name.charCodeAt(0) || 0) % PALETTE.length];
 };
+const getStudentId = (s) => s?.studentId || s?.id?.slice(-6) || 'N/A';
 
 // ─── Stat card ────────────────────────────────────────────────────────────────
 const StatCard = ({ label, value, sub, icon: Icon, accent, loading, delay = 0 }) => (
@@ -203,6 +206,9 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
 
     setSubmitting(true);
     try {
+      // ─── FIXED: Get the selected student to extract enrollment info ──────
+      const student = students.find(s => s.id === selectedStudent);
+      
       const resultData = {
         studentId: selectedStudent,
         subjectId: subjectId,
@@ -210,6 +216,9 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
         armId: armId,
         caScore: Number(caScore),
         examScore: Number(examScore),
+        // ─── FIXED: Add enrollmentId and termId from student data ──────────
+        enrollmentId: student?.enrollmentId || student?.enrollment?.id,
+        termId: student?.termId || student?.enrollment?.termId,
       };
       
       const response = await teacherApi.uploadResult(resultData);
@@ -276,11 +285,18 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
                   <option value="">Select a student...</option>
                   {students.map(student => (
                     <option key={student.id} value={student.id}>
-                      {fullName(student)} ({student.studentId || 'No ID'})
+                      {getFullName(student)} ({getStudentId(student)})
                     </option>
                   ))}
                 </NSelect>
               </NField>
+
+              {selectedStudentObj && !selectedStudentObj.enrollmentId && !selectedStudentObj.enrollment?.id && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-700">This student doesn't have an active enrollment. Please ensure they are enrolled.</p>
+                </div>
+              )}
 
               {existingResult && (
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2">
@@ -392,12 +408,12 @@ const ResultRow = ({ student, result, editing, onEdit, onCancel, onSave, saving,
       className={`group transition-colors ${editing ? 'bg-blue-50/50' : 'hover:bg-slate-50/60'}`}>
       <td className="px-5 py-3.5 border-b border-slate-100">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ background: avatarBg(student) }}>
-            {initials(student)}
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ background: getAvatarBg(student) }}>
+            {getInitials(student)}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-800 truncate">{fullName(student)}</p>
-            <p className="text-[11px] text-slate-400 font-mono">{student.studentId || '—'}</p>
+            <p className="text-sm font-semibold text-slate-800 truncate">{getFullName(student)}</p>
+            <p className="text-[11px] text-slate-400 font-mono">{getStudentId(student)}</p>
           </div>
         </div>
       </td>
@@ -568,7 +584,6 @@ const TeacherResultUpload = () => {
     if (!selClass) return [];
     const classObj = classes.find(c => c.id === selClass);
     if (classObj?.subjects?.length > 0) return classObj.subjects;
-    // Fallback: filter subjects by classId
     const classId = classObj?.class?.id;
     return subjects.filter(s => s.classId === classId);
   }, [classes, subjects, selClass]);
@@ -583,20 +598,30 @@ const TeacherResultUpload = () => {
     const loadData = async () => {
       setLoadingData(true);
       try {
-        // Get students for this class and subject
         const response = await teacherApi.getStudents();
         const allStudents = toArray(response, 'students', 'data');
         
-        // Filter students by class arm
-        const filtered = allStudents.filter(s => {
-          const studentClassArmId = s.classArmId || s.armId || s.classArm?.id;
-          return studentClassArmId === selClass;
-        });
+        // ─── FIXED: Map students with enrollment data ──────────────────────
+        const mappedStudents = allStudents.map(student => ({
+          id: student.id,
+          studentId: student.studentId,
+          userId: student.userId,
+          firstName: student.user?.firstName || '',
+          lastName: student.user?.lastName || '',
+          user: student.user,
+          // ─── FIXED: Preserve enrollment data ─────────────────────────────
+          enrollmentId: student.enrollmentId || student.enrollment?.id,
+          enrollment: student.enrollment,
+          termId: student.termId || student.enrollment?.termId,
+          sessionId: student.sessionId || student.enrollment?.sessionId,
+          _count: student._count,
+          ...student,
+        }));
         
-        setStudents(filtered);
+        setStudents(mappedStudents);
         setResults({});
         
-        // Try to get existing results
+        // Try to get existing results for this subject
         try {
           const classObj = classes.find(c => c.id === selClass);
           const statusRes = await teacherApi.getResultApprovalStatus({
@@ -611,17 +636,17 @@ const TeacherResultUpload = () => {
           });
           setResults(resultsMap);
           
-          // Update students with existing result info
-          const updatedStudents = filtered.map(s => ({
+          const updatedStudents = mappedStudents.map(s => ({
             ...s,
             existingResult: resultsMap[s.id] || null,
           }));
           setStudents(updatedStudents);
           
         } catch (err) {
-          // No results found, that's fine
+          console.log('No existing results found');
         }
       } catch (err) {
+        console.error('Error loading data:', err);
         toast.error('Failed to load student data');
       } finally {
         setLoadingData(false);
@@ -636,8 +661,14 @@ const TeacherResultUpload = () => {
     setSaving(true);
     try {
       const existing = results[studentId];
-      const student = students.find(s => s.id === studentId);
       const classObj = classes.find(c => c.id === selClass);
+      const student = students.find(s => s.id === studentId);
+      
+      // ─── FIXED: Build payload with enrollmentId and termId ───────────────
+      const basePayload = {
+        caScore: scoreData.caScore,
+        examScore: scoreData.examScore,
+      };
       
       let res;
       if (!existing) {
@@ -649,20 +680,17 @@ const TeacherResultUpload = () => {
           armId: selClass,
           caScore: scoreData.caScore,
           examScore: scoreData.examScore,
+          // ─── FIXED: Add required fields ──────────────────────────────────
+          enrollmentId: student?.enrollmentId || student?.enrollment?.id,
+          termId: student?.termId || student?.enrollment?.termId,
         };
         res = await teacherApi.uploadResult(resultData);
       } else if (existing.status === 'REJECTED') {
         // Resubmit rejected result
-        res = await teacherApi.resubmitRejectedResult(existing.id, {
-          caScore: scoreData.caScore,
-          examScore: scoreData.examScore,
-        });
+        res = await teacherApi.resubmitRejectedResult(existing.id, basePayload);
       } else {
         // Edit existing result
-        res = await teacherApi.editResult(existing.id, {
-          caScore: scoreData.caScore,
-          examScore: scoreData.examScore,
-        });
+        res = await teacherApi.editResult(existing.id, basePayload);
       }
 
       const saved = extract(res);
@@ -670,6 +698,7 @@ const TeacherResultUpload = () => {
       setEditingId(null);
       toast.success(existing ? 'Result updated' : 'Result submitted');
     } catch (err) {
+      console.error('Error saving result:', err);
       const errorMessage = err?.response?.data?.message || 
                           err?.response?.data?.errors?.[0]?.message || 
                           'Failed to save result';
@@ -677,7 +706,7 @@ const TeacherResultUpload = () => {
     } finally {
       setSaving(false);
     }
-  }, [results, students, selClass, selSubject, classes]);
+  }, [results, selClass, selSubject, classes, students]);
 
   const handleCreateResult = useCallback((newResult, studentId) => {
     setResults(prev => ({ ...prev, [studentId]: newResult }));
@@ -686,7 +715,7 @@ const TeacherResultUpload = () => {
   // ─── Filters ────────────────────────────────────────────────────────────────
   const visibleStudents = students.filter(s => {
     if (!search) return true;
-    const name = fullName(s).toLowerCase();
+    const name = getFullName(s).toLowerCase();
     const id = (s.studentId || '').toLowerCase();
     return name.includes(search.toLowerCase()) || id.includes(search.toLowerCase());
   });
