@@ -2,7 +2,7 @@
 // ─── Production-ready Result Upload — matches school admin design system ──────
 // Dark navy hero · white stat cards with colored top borders · slide drawers
 // ✨ ADDED: Manual "Create Result" button with modal for individual entry
-// ✨ FIXED: Added enrollmentId, termId, and sessionId from the API response
+// ✨ FIXED: Proper API integration with teacherApi
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,7 +15,7 @@ import {
   AlertTriangle, RotateCcw, Eye, Minus, Plus, UserPlus,
   UserCheck, Sparkles, Crown, Star
 } from 'lucide-react';
-import teacherApi from '../../services/teacherApi';
+import { teacherApi } from '../../services/teacherApi';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const toArray = (res, ...keys) => {
@@ -66,7 +66,7 @@ const fullName = (s) => {
   return `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Unknown';
 };
 
-// ─── Stat card (identical to admin pages) ────────────────────────────────────
+// ─── Stat card ────────────────────────────────────────────────────────────────
 const StatCard = ({ label, value, sub, icon: Icon, accent, loading, delay = 0 }) => (
   <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }}
     transition={{ delay, duration: 0.35, ease: 'easeOut' }}
@@ -151,7 +151,7 @@ const NSelect = ({ error, children, ...props }) => (
   </div>
 );
 
-// ─── Score input cell (inline edit) ───────────────────────────────────────────
+// ─── Score input cell ──────────────────────────────────────────────────────────
 const ScoreCell = ({ value, onChange, disabled, max, label }) => (
   <div className="flex flex-col gap-1 min-w-[80px]">
     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</span>
@@ -170,7 +170,7 @@ const ScoreCell = ({ value, onChange, disabled, max, label }) => (
 );
 
 // ─── CREATE RESULT MODAL ──────────────────────────────────────────────────────
-const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armId, onSuccess, currentTermId, currentSessionId }) => {
+const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armId, onSuccess }) => {
   const [selectedStudent, setSelectedStudent] = useState('');
   const [caScore, setCaScore] = useState('');
   const [examScore, setExamScore] = useState('');
@@ -203,9 +203,6 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
 
     setSubmitting(true);
     try {
-      const selectedStudentObj = students.find(s => s.id === selectedStudent);
-      const enrollmentId = selectedStudentObj?.enrollment?.id || selectedStudentObj?.enrollmentId;
-      
       const resultData = {
         studentId: selectedStudent,
         subjectId: subjectId,
@@ -215,20 +212,17 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
         examScore: Number(examScore),
       };
       
-      // Add required fields
-      if (enrollmentId) resultData.enrollmentId = enrollmentId;
-      if (currentTermId) resultData.termId = currentTermId;
-      if (currentSessionId) resultData.sessionId = currentSessionId;
-      
       const response = await teacherApi.uploadResult(resultData);
-      
       const savedResult = extract(response);
+      
       toast.success('Result created successfully!');
       onSuccess(savedResult, selectedStudent);
       onClose();
     } catch (error) {
       console.error('Error creating result:', error);
-      const errorMessage = error?.response?.data?.message || error?.response?.data?.errors?.[0]?.message || 'Failed to create result';
+      const errorMessage = error?.response?.data?.message || 
+                          error?.response?.data?.errors?.[0]?.message || 
+                          'Failed to create result';
       toast.error(errorMessage);
     } finally {
       setSubmitting(false);
@@ -237,7 +231,6 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
 
   const selectedStudentObj = students.find(s => s.id === selectedStudent);
   const existingResult = selectedStudentObj?.existingResult;
-  const hasEnrollment = selectedStudentObj?.enrollment || selectedStudentObj?.enrollmentId;
 
   if (!isOpen) return null;
 
@@ -259,7 +252,6 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
             className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="relative bg-gradient-to-r from-blue-700 to-indigo-700 px-6 py-5">
               <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full -mr-20 -mt-20" />
               <div className="relative z-10 flex items-center justify-between">
@@ -272,23 +264,15 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
                     <p className="text-xs text-white/80">Manually enter a student's result</p>
                   </div>
                 </div>
-                <button
-                  onClick={onClose}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 transition-all"
-                >
+                <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-white/80 hover:text-white hover:bg-white/20 transition-all">
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Content */}
             <div className="p-6 space-y-5">
-              {/* Student Selection */}
               <NField label="Student" error={errors.student}>
-                <NSelect 
-                  value={selectedStudent} 
-                  onChange={(e) => setSelectedStudent(e.target.value)}
-                >
+                <NSelect value={selectedStudent} onChange={(e) => setSelectedStudent(e.target.value)}>
                   <option value="">Select a student...</option>
                   {students.map(student => (
                     <option key={student.id} value={student.id}>
@@ -298,27 +282,13 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
                 </NSelect>
               </NField>
 
-              {/* Warning for missing enrollment */}
-              {selectedStudent && !hasEnrollment && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-rose-700">
-                    This student doesn't have an active enrollment. Results cannot be submitted.
-                  </p>
-                </div>
-              )}
-
-              {/* Warning for existing result */}
               {existingResult && (
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700">
-                    This student already has a result for this subject. Submitting will update it.
-                  </p>
+                  <p className="text-xs text-amber-700">This student already has a result. Submitting will update it.</p>
                 </div>
               )}
 
-              {/* Score Inputs */}
               <div className="grid grid-cols-2 gap-4">
                 <NField label="CA Score (max 100)" error={errors.ca}>
                   <NInput
@@ -345,13 +315,8 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
                 </NField>
               </div>
 
-              {/* Preview */}
               {(caScore !== '' || examScore !== '') && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50"
-                >
+                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="p-4 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50">
                   <p className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-2">Preview</p>
                   <div className="flex items-center justify-between">
                     <div>
@@ -363,34 +328,22 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
                       <GradeChip total={total} />
                     </div>
                   </div>
-                  {total > 100 && (
-                    <p className="text-[11px] text-rose-500 flex items-center gap-1 mt-2">
-                      <AlertCircle className="w-3 h-3" /> Total cannot exceed 100
-                    </p>
-                  )}
+                  {total > 100 && <p className="text-[11px] text-rose-500 flex items-center gap-1 mt-2"><AlertCircle className="w-3 h-3" /> Total cannot exceed 100</p>}
                 </motion.div>
               )}
 
-              {errors.total && (
-                <p className="text-[11px] text-rose-500 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />{errors.total}
-                </p>
-              )}
+              {errors.total && <p className="text-[11px] text-rose-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.total}</p>}
 
-              {/* Actions */}
               <div className="flex items-center gap-3 pt-2">
                 <button
                   onClick={handleSubmit}
-                  disabled={!isValid || submitting || (selectedStudent && !hasEnrollment)}
+                  disabled={!isValid || submitting}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   {submitting ? 'Saving...' : 'Create Result'}
                 </button>
-                <button
-                  onClick={onClose}
-                  className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-all"
-                >
+                <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-all">
                   Cancel
                 </button>
               </div>
@@ -427,8 +380,6 @@ const ResultRow = ({ student, result, editing, onEdit, onCancel, onSave, saving,
     onSave(student.id, {
       caScore: Number(ca),
       examScore: Number(exam),
-      totalScore: total,
-      grade,
     });
   };
 
@@ -436,17 +387,12 @@ const ResultRow = ({ student, result, editing, onEdit, onCancel, onSave, saving,
   const isRejected = result?.status === 'REJECTED';
 
   return (
-    <motion.tr
-      key={student.id}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+    <motion.tr key={student.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
       transition={{ delay: Math.min(idx * 0.025, 0.4) }}
-      className={`group transition-colors ${editing ? 'bg-blue-50/50' : 'hover:bg-slate-50/60'}`}
-    >
+      className={`group transition-colors ${editing ? 'bg-blue-50/50' : 'hover:bg-slate-50/60'}`}>
       <td className="px-5 py-3.5 border-b border-slate-100">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-            style={{ background: avatarBg(student) }}>
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ background: avatarBg(student) }}>
             {initials(student)}
           </div>
           <div className="min-w-0">
@@ -576,15 +522,6 @@ const TeacherResultUpload = () => {
   const [search, setSearch] = useState('');
   
   const [showCreateModal, setShowCreateModal] = useState(false);
-  
-  // Get current term and session from the first result in the list
-  const [currentTermId, setCurrentTermId] = useState('');
-  const [currentSessionId, setCurrentSessionId] = useState('');
-
-  const classObj = classes.find(c => c.arm?.id === selClass);
-  const classSubjects = classObj?.subjects || subjects.filter(s =>
-    !selClass || s.classId === classObj?.class?.id
-  );
 
   const fetchMeta = useCallback(async (isRefresh = false) => {
     isRefresh ? setRefreshing(true) : setLoading(true);
@@ -593,79 +530,118 @@ const TeacherResultUpload = () => {
         teacherApi.getAssignedClasses(),
         teacherApi.getAssignedSubjects(),
       ]);
-      if (clsRes.status === 'fulfilled') setClasses(toArray(clsRes.value, 'data', 'classes'));
-      if (subRes.status === 'fulfilled') setSubjects(toArray(subRes.value, 'data', 'subjects'));
+      
+      let classesData = [];
+      if (clsRes.status === 'fulfilled') {
+        const rawData = clsRes.value?.data?.data || clsRes.value?.data || clsRes.value;
+        if (Array.isArray(rawData)) {
+          classesData = rawData.map(item => ({
+            id: item.arm?.id || item.armId || item.id,
+            name: `${item.class?.name || 'Class'} - ${item.arm?.name || 'Arm'}`,
+            class: item.class,
+            arm: item.arm,
+            subjects: item.subjects || [],
+          })).filter(c => c.id);
+        }
+      }
+      setClasses(classesData);
+      
+      let subjectsData = [];
+      if (subRes.status === 'fulfilled') {
+        subjectsData = toArray(subRes.value, 'data', 'subjects');
+      }
+      setSubjects(subjectsData);
+      
       if (isRefresh) toast.success('Refreshed');
-    } catch { toast.error('Failed to load data'); }
-    finally { setLoading(false); setRefreshing(false); }
+    } catch (err) {
+      toast.error('Failed to load data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
   useEffect(() => { fetchMeta(); }, [fetchMeta]);
 
-  useEffect(() => {
-    if (!selClass || !selSubject) { setStudents([]); setResults({}); return; }
+  // ── Get subjects for selected class ──────────────────────────────────────
+  const getClassSubjects = useCallback(() => {
+    if (!selClass) return [];
+    const classObj = classes.find(c => c.id === selClass);
+    if (classObj?.subjects?.length > 0) return classObj.subjects;
+    // Fallback: filter subjects by classId
+    const classId = classObj?.class?.id;
+    return subjects.filter(s => s.classId === classId);
+  }, [classes, subjects, selClass]);
 
-    const loadStudentsAndResults = async () => {
+  useEffect(() => {
+    if (!selClass || !selSubject) {
+      setStudents([]);
+      setResults({});
+      return;
+    }
+
+    const loadData = async () => {
       setLoadingData(true);
       try {
-        const [statusRes] = await Promise.allSettled([
-          teacherApi.getResultApprovalStatus({ subjectId: selSubject }),
-        ]);
-
-        const statusData = statusRes.status === 'fulfilled'
-          ? toArray(statusRes.value, 'results', 'data')
-          : [];
-
-        const resultsMap = {};
-        const studentsFromResults = [];
-
-        statusData.forEach(r => {
-          resultsMap[r.studentId] = r;
-          // Build student object with enrollment and result info
-          studentsFromResults.push({ 
-            id: r.studentId,
-            studentId: r.student?.studentId,
-            firstName: r.student?.user?.firstName,
-            lastName: r.student?.user?.lastName,
-            user: r.student?.user,
-            enrollment: r.enrollment,
-            enrollmentId: r.enrollmentId,
-            termId: r.termId,
-            sessionId: r.sessionId,
-            existingResult: r 
-          });
+        // Get students for this class and subject
+        const response = await teacherApi.getStudents();
+        const allStudents = toArray(response, 'students', 'data');
+        
+        // Filter students by class arm
+        const filtered = allStudents.filter(s => {
+          const studentClassArmId = s.classArmId || s.armId || s.classArm?.id;
+          return studentClassArmId === selClass;
         });
-
-        setResults(resultsMap);
-        if (studentsFromResults.length > 0) {
-          setStudents(studentsFromResults);
-          // Set current term and session from the first result
-          if (statusData[0]) {
-            setCurrentTermId(statusData[0].termId);
-            setCurrentSessionId(statusData[0].enrollment?.sessionId || statusData[0].sessionId);
-          }
+        
+        setStudents(filtered);
+        setResults({});
+        
+        // Try to get existing results
+        try {
+          const classObj = classes.find(c => c.id === selClass);
+          const statusRes = await teacherApi.getResultApprovalStatus({
+            classId: classObj?.class?.id,
+            subjectId: selSubject,
+          });
+          
+          const statusData = toArray(statusRes, 'results', 'data');
+          const resultsMap = {};
+          statusData.forEach(r => {
+            resultsMap[r.studentId] = r;
+          });
+          setResults(resultsMap);
+          
+          // Update students with existing result info
+          const updatedStudents = filtered.map(s => ({
+            ...s,
+            existingResult: resultsMap[s.id] || null,
+          }));
+          setStudents(updatedStudents);
+          
+        } catch (err) {
+          // No results found, that's fine
         }
-
       } catch (err) {
-        toast.error(err?.response?.data?.message || 'Failed to load results');
+        toast.error('Failed to load student data');
       } finally {
         setLoadingData(false);
       }
     };
 
-    loadStudentsAndResults();
-  }, [selClass, selSubject]);
+    loadData();
+  }, [selClass, selSubject, classes]);
 
+  // ─── Handlers ──────────────────────────────────────────────────────────────
   const handleSave = useCallback(async (studentId, scoreData) => {
     setSaving(true);
     try {
       const existing = results[studentId];
       const student = students.find(s => s.id === studentId);
-      const enrollmentId = student?.enrollment?.id || student?.enrollmentId;
+      const classObj = classes.find(c => c.id === selClass);
       
       let res;
-
       if (!existing) {
+        // Create new result
         const resultData = {
           studentId,
           subjectId: selSubject,
@@ -674,17 +650,15 @@ const TeacherResultUpload = () => {
           caScore: scoreData.caScore,
           examScore: scoreData.examScore,
         };
-        if (enrollmentId) resultData.enrollmentId = enrollmentId;
-        if (currentTermId) resultData.termId = currentTermId;
-        if (currentSessionId) resultData.sessionId = currentSessionId;
-        
         res = await teacherApi.uploadResult(resultData);
       } else if (existing.status === 'REJECTED') {
+        // Resubmit rejected result
         res = await teacherApi.resubmitRejectedResult(existing.id, {
           caScore: scoreData.caScore,
           examScore: scoreData.examScore,
         });
       } else {
+        // Edit existing result
         res = await teacherApi.editResult(existing.id, {
           caScore: scoreData.caScore,
           examScore: scoreData.examScore,
@@ -696,18 +670,20 @@ const TeacherResultUpload = () => {
       setEditingId(null);
       toast.success(existing ? 'Result updated' : 'Result submitted');
     } catch (err) {
-      const errorMessage = err?.response?.data?.message || err?.response?.data?.errors?.[0]?.message || 'Failed to save result';
+      const errorMessage = err?.response?.data?.message || 
+                          err?.response?.data?.errors?.[0]?.message || 
+                          'Failed to save result';
       toast.error(errorMessage);
     } finally {
       setSaving(false);
     }
-  }, [results, students, selSubject, selClass, classObj, currentTermId, currentSessionId]);
+  }, [results, students, selClass, selSubject, classes]);
 
   const handleCreateResult = useCallback((newResult, studentId) => {
     setResults(prev => ({ ...prev, [studentId]: newResult }));
-    toast.success('Result created successfully');
   }, []);
 
+  // ─── Filters ────────────────────────────────────────────────────────────────
   const visibleStudents = students.filter(s => {
     if (!search) return true;
     const name = fullName(s).toLowerCase();
@@ -715,6 +691,7 @@ const TeacherResultUpload = () => {
     return name.includes(search.toLowerCase()) || id.includes(search.toLowerCase());
   });
 
+  // ─── Stats ──────────────────────────────────────────────────────────────────
   const total = students.length;
   const entered = Object.keys(results).length;
   const approved = Object.values(results).filter(r => r.status === 'APPROVED').length;
@@ -727,12 +704,11 @@ const TeacherResultUpload = () => {
     ? Math.round((Object.values(results).filter(r => calcGrade(r.totalScore || 0) !== 'F').length / entered) * 100)
     : 0;
 
-  const selClassObj = classes.find(c => c.arm?.id === selClass);
+  const selClassObj = classes.find(c => c.id === selClass);
+  const classSubjects = getClassSubjects();
   const selSubjectObj = classSubjects.find(s => s.id === selSubject || s.subject?.id === selSubject);
   const subjectName = selSubjectObj?.name || selSubjectObj?.subject?.name || '';
-  const className_ = selClassObj
-    ? `${selClassObj.class?.name || ''} — ${selClassObj.arm?.name || ''}`
-    : '';
+  const className_ = selClassObj ? `${selClassObj.class?.name || ''} — ${selClassObj.arm?.name || ''}` : '';
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-[#f5f6fa] gap-3">
@@ -781,14 +757,12 @@ const TeacherResultUpload = () => {
               </div>
             ))}
 
-            <div className="flex items-center gap-2">
-              <button onClick={() => fetchMeta(true)} disabled={refreshing}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-colors disabled:opacity-50"
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-                {refreshing ? 'Syncing…' : 'Refresh'}
-              </button>
-            </div>
+            <button onClick={() => fetchMeta(true)} disabled={refreshing}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white transition-colors disabled:opacity-50"
+              style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Syncing…' : 'Refresh'}
+            </button>
           </div>
         </div>
       </div>
@@ -832,7 +806,7 @@ const TeacherResultUpload = () => {
                 <NSelect value={selClass} onChange={e => { setSelClass(e.target.value); setSelSubject(''); setEditingId(null); }}>
                   <option value="">Select a class…</option>
                   {classes.map(c => (
-                    <option key={c.arm?.id} value={c.arm?.id}>
+                    <option key={c.id} value={c.id}>
                       {c.class?.name} — {c.arm?.name}
                     </option>
                   ))}
@@ -1033,10 +1007,8 @@ const TeacherResultUpload = () => {
         onClose={() => setShowCreateModal(false)}
         students={students}
         subjectId={selSubject}
-        classId={classObj?.class?.id}
+        classId={selClassObj?.class?.id}
         armId={selClass}
-        currentTermId={currentTermId}
-        currentSessionId={currentSessionId}
         onSuccess={handleCreateResult}
       />
     </div>

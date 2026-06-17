@@ -1,6 +1,7 @@
 // pages/teacher/TeacherAttendanceView.jsx
 // ─── Complete Teacher Attendance View Component ───────────────────────────
 // Features: View attendance records by class, date range, and student
+// FIXED: Properly handles backend response structure with uppercase status values
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -19,7 +20,15 @@ import { teacherApi } from '../../services/teacherApi';
 // ─────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────
+const toArray = (res, ...keys) => {
+  if (!res) return [];
+  const candidates = [res, res.data, res.data?.data, ...keys.map(k => res[k]), ...keys.map(k => res.data?.[k])];
+  for (const c of candidates) { if (Array.isArray(c)) return c; }
+  return [];
+};
+
 const formatDate = (date) => {
+  if (!date) return '';
   const d = new Date(date);
   return d.toISOString().split('T')[0];
 };
@@ -50,9 +59,11 @@ const formatTime = (dateString) => {
   return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 };
 
+// ─── Backend uses UPPERCASE status values ──────────────────
+// Backend enum: PRESENT, ABSENT, LATE
 const ATTENDANCE_STATUS = {
-  present: { 
-    value: 'present', 
+  PRESENT: { 
+    value: 'PRESENT', 
     label: 'Present', 
     color: 'text-emerald-600', 
     bg: 'bg-emerald-50', 
@@ -60,8 +71,8 @@ const ATTENDANCE_STATUS = {
     icon: CheckCircle,
     gradient: 'from-emerald-500 to-teal-500'
   },
-  absent: { 
-    value: 'absent', 
+  ABSENT: { 
+    value: 'ABSENT', 
     label: 'Absent', 
     color: 'text-red-600', 
     bg: 'bg-red-50', 
@@ -69,8 +80,8 @@ const ATTENDANCE_STATUS = {
     icon: XCircle,
     gradient: 'from-red-500 to-rose-500'
   },
-  late: { 
-    value: 'late', 
+  LATE: { 
+    value: 'LATE', 
     label: 'Late', 
     color: 'text-amber-600', 
     bg: 'bg-amber-50', 
@@ -78,26 +89,13 @@ const ATTENDANCE_STATUS = {
     icon: ClockIcon,
     gradient: 'from-amber-500 to-orange-500'
   },
-  excused: { 
-    value: 'excused', 
-    label: 'Excused', 
-    color: 'text-indigo-600', 
-    bg: 'bg-indigo-50', 
-    border: 'border-indigo-200',
-    icon: AlertCircle,
-    gradient: 'from-indigo-500 to-purple-500'
-  },
 };
 
-const toArray = (res, ...keys) => {
-  if (!res) return [];
-  const candidates = [res, res.data, res.data?.data, ...keys.map(k => res[k]), ...keys.map(k => res.data?.[k])];
-  for (const c of candidates) { if (Array.isArray(c)) return c; }
-  return [];
-};
+// Map for display order
+const STATUS_ORDER = ['PRESENT', 'ABSENT', 'LATE'];
 
 // ─────────────────────────────────────────────────────────────
-// STATS CARD COMPONENT WITH ANIMATION
+// STATS CARD COMPONENT
 // ─────────────────────────────────────────────────────────────
 const StatsCard = ({ title, value, icon: Icon, color, bgColor, trend, trendValue }) => (
   <motion.div
@@ -131,8 +129,15 @@ const StatsCard = ({ title, value, icon: Icon, color, bgColor, trend, trendValue
 // ATTENDANCE RECORD ROW COMPONENT
 // ─────────────────────────────────────────────────────────────
 const AttendanceRecordRow = ({ record, index, onViewDetails }) => {
-  const statusInfo = ATTENDANCE_STATUS[record.status] || ATTENDANCE_STATUS.present;
+  // Handle uppercase status from backend
+  const statusKey = record.status || 'PRESENT';
+  const statusInfo = ATTENDANCE_STATUS[statusKey] || ATTENDANCE_STATUS.PRESENT;
   const StatusIcon = statusInfo.icon;
+  
+  // Get student name from nested user object or direct fields
+  const firstName = record.student?.user?.firstName || record.student?.firstName || record.user?.firstName || '';
+  const lastName = record.student?.user?.lastName || record.student?.lastName || record.user?.lastName || '';
+  const studentId = record.student?.studentId || record.studentId || '';
   
   return (
     <motion.div
@@ -147,20 +152,19 @@ const AttendanceRecordRow = ({ record, index, onViewDetails }) => {
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white text-sm font-bold shadow-md">
-              {record.student?.firstName?.[0] || record.studentName?.[0] || 'S'}
+              {firstName?.[0] || lastName?.[0] || 'S'}
             </div>
             <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-              record.status === 'present' ? 'bg-emerald-500' :
-              record.status === 'late' ? 'bg-amber-500' :
-              record.status === 'excused' ? 'bg-indigo-500' : 'bg-red-500'
+              statusKey === 'PRESENT' ? 'bg-emerald-500' :
+              statusKey === 'LATE' ? 'bg-amber-500' : 'bg-red-500'
             }`} />
           </div>
           <div>
             <p className="font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors">
-              {record.student?.firstName} {record.student?.lastName || record.studentName}
+              {firstName} {lastName}
             </p>
             <p className="text-xs text-slate-400 font-mono">
-              ID: {record.student?.studentId || record.studentId || 'N/A'}
+              ID: {studentId || 'N/A'}
             </p>
           </div>
         </div>
@@ -210,8 +214,13 @@ const AttendanceRecordRow = ({ record, index, onViewDetails }) => {
 const AttendanceDetailsModal = ({ record, isOpen, onClose }) => {
   if (!isOpen || !record) return null;
   
-  const statusInfo = ATTENDANCE_STATUS[record.status] || ATTENDANCE_STATUS.present;
+  const statusKey = record.status || 'PRESENT';
+  const statusInfo = ATTENDANCE_STATUS[statusKey] || ATTENDANCE_STATUS.PRESENT;
   const StatusIcon = statusInfo.icon;
+  
+  const firstName = record.student?.user?.firstName || record.student?.firstName || record.user?.firstName || '';
+  const lastName = record.student?.user?.lastName || record.student?.lastName || record.user?.lastName || '';
+  const studentId = record.student?.studentId || record.studentId || '';
   
   return (
     <motion.div
@@ -257,16 +266,16 @@ const AttendanceDetailsModal = ({ record, isOpen, onClose }) => {
           {/* Student Info */}
           <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-indigo-50/50 to-transparent rounded-xl">
             <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
-              {record.student?.firstName?.[0] || record.studentName?.[0] || 'S'}
+              {firstName?.[0] || lastName?.[0] || 'S'}
             </div>
             <div>
               <h3 className="font-bold text-slate-800 text-lg">
-                {record.student?.firstName} {record.student?.lastName || record.studentName}
+                {firstName} {lastName}
               </h3>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-xs text-slate-500 font-mono">Student ID:</span>
                 <span className="text-xs font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
-                  {record.student?.studentId || record.studentId || 'N/A'}
+                  {studentId || 'N/A'}
                 </span>
               </div>
             </div>
@@ -286,7 +295,7 @@ const AttendanceDetailsModal = ({ record, isOpen, onClose }) => {
                 <ClockIcon className="w-3.5 h-3.5 text-indigo-500" />
                 <p className="text-xs font-medium text-slate-500">Recorded At</p>
               </div>
-              <p className="font-semibold text-slate-800">{formatTime(record.createdAt)}</p>
+              <p className="font-semibold text-slate-800">{formatTime(record.createdAt) || 'N/A'}</p>
             </div>
           </div>
           
@@ -313,7 +322,7 @@ const AttendanceDetailsModal = ({ record, isOpen, onClose }) => {
           {/* Metadata */}
           <div className="pt-3 border-t border-slate-100">
             <p className="text-xs text-slate-400 font-mono">
-              Record ID: {record.id?.slice(0, 8)}...
+              Record ID: {record.id?.slice(0, 8) || 'N/A'}...
             </p>
             {record.updatedAt && record.updatedAt !== record.createdAt && (
               <p className="text-xs text-slate-400 mt-1">
@@ -340,7 +349,7 @@ const TeacherAttendanceView = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [viewMode, setViewMode] = useState('list'); // list, grid
+  const [viewMode, setViewMode] = useState('list');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   
   // Filter states
@@ -369,7 +378,6 @@ const TeacherAttendanceView = () => {
     present: 0,
     absent: 0,
     late: 0,
-    excused: 0,
     attendanceRate: 0,
   });
   
@@ -380,11 +388,11 @@ const TeacherAttendanceView = () => {
       const data = response?.data?.data || response?.data || response;
       
       const classes = Array.isArray(data) ? data.map(item => ({
-        id: item.arm?.id || item.classArmId || item.id,
+        id: item.arm?.id || item.armId || item.id,
         name: `${item.class?.name || 'Class'} - ${item.arm?.name || 'Arm'}`,
         classId: item.class?.id,
         armId: item.arm?.id,
-      })) : [];
+      })).filter(c => c.id) : [];
       
       setAssignedClasses(classes);
     } catch (error) {
@@ -412,13 +420,12 @@ const TeacherAttendanceView = () => {
       
       // Calculate statistics
       const total = records.length;
-      const present = records.filter(r => r.status === 'present').length;
-      const absent = records.filter(r => r.status === 'absent').length;
-      const late = records.filter(r => r.status === 'late').length;
-      const excused = records.filter(r => r.status === 'excused').length;
+      const present = records.filter(r => r.status === 'PRESENT').length;
+      const absent = records.filter(r => r.status === 'ABSENT').length;
+      const late = records.filter(r => r.status === 'LATE').length;
       const attendanceRate = total > 0 ? ((present + late) / total * 100).toFixed(1) : 0;
       
-      setStatistics({ total, present, absent, late, excused, attendanceRate });
+      setStatistics({ total, present, absent, late, attendanceRate });
     } catch (error) {
       console.error('Error fetching attendance:', error);
       toast.error('Failed to load attendance records');
@@ -441,7 +448,9 @@ const TeacherAttendanceView = () => {
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       filtered = filtered.filter(record => {
-        const studentName = `${record.student?.firstName || ''} ${record.student?.lastName || ''}`.toLowerCase();
+        const firstName = record.student?.user?.firstName || record.student?.firstName || record.user?.firstName || '';
+        const lastName = record.student?.user?.lastName || record.student?.lastName || record.user?.lastName || '';
+        const studentName = `${firstName} ${lastName}`.toLowerCase();
         const studentId = (record.student?.studentId || record.studentId || '').toLowerCase();
         return studentName.includes(term) || studentId.includes(term);
       });
@@ -500,16 +509,20 @@ const TeacherAttendanceView = () => {
   const handleExport = async () => {
     setExporting(true);
     try {
-      // Create CSV content
       const headers = ['Date', 'Student Name', 'Student ID', 'Status', 'Remarks', 'Recorded At'];
-      const rows = filteredRecords.map(record => [
-        formatDisplayDate(record.date),
-        `${record.student?.firstName || ''} ${record.student?.lastName || ''}`,
-        record.student?.studentId || record.studentId || '',
-        ATTENDANCE_STATUS[record.status]?.label || record.status,
-        `"${(record.remarks || '').replace(/"/g, '""')}"`,
-        formatTime(record.createdAt),
-      ]);
+      const rows = filteredRecords.map(record => {
+        const firstName = record.student?.user?.firstName || record.student?.firstName || record.user?.firstName || '';
+        const lastName = record.student?.user?.lastName || record.student?.lastName || record.user?.lastName || '';
+        const statusInfo = ATTENDANCE_STATUS[record.status] || ATTENDANCE_STATUS.PRESENT;
+        return [
+          formatDisplayDate(record.date),
+          `${firstName} ${lastName}`.trim(),
+          record.student?.studentId || record.studentId || '',
+          statusInfo.label,
+          `"${(record.remarks || '').replace(/"/g, '""')}"`,
+          formatTime(record.createdAt),
+        ];
+      });
       
       const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -540,7 +553,7 @@ const TeacherAttendanceView = () => {
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
-      {/* Header with Indigo Theme */}
+      {/* Header */}
       <div className="bg-gradient-to-r from-indigo-700 via-indigo-600 to-indigo-700 border-b border-indigo-500/20 sticky top-0 z-20 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 py-5">
           <div className="flex items-center justify-between flex-wrap gap-4">
@@ -599,15 +612,13 @@ const TeacherAttendanceView = () => {
       
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Stats Dashboard */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
           <StatsCard
             title="Total Records"
             value={statistics.total}
             icon={Activity}
             color="text-indigo-600"
             bgColor="bg-indigo-50"
-            trend="up"
-            trendValue="+12%"
           />
           <StatsCard
             title="Present"
@@ -615,6 +626,8 @@ const TeacherAttendanceView = () => {
             icon={CheckCircle}
             color="text-emerald-600"
             bgColor="bg-emerald-50"
+            trend="up"
+            trendValue={`${statistics.total > 0 ? ((statistics.present / statistics.total) * 100).toFixed(0) : 0}%`}
           />
           <StatsCard
             title="Absent"
@@ -631,13 +644,6 @@ const TeacherAttendanceView = () => {
             bgColor="bg-amber-50"
           />
           <StatsCard
-            title="Excused"
-            value={statistics.excused}
-            icon={AlertCircle}
-            color="text-indigo-600"
-            bgColor="bg-indigo-50"
-          />
-          <StatsCard
             title="Attendance Rate"
             value={`${statistics.attendanceRate}%`}
             icon={Award}
@@ -646,7 +652,7 @@ const TeacherAttendanceView = () => {
           />
         </div>
         
-        {/* Filter Panel - Enhanced */}
+        {/* Filter Panel */}
         <div className="bg-white rounded-2xl border border-slate-100 shadow-lg mb-6 overflow-hidden">
           <div className="px-6 py-4 bg-gradient-to-r from-indigo-50/50 to-transparent border-b border-slate-100">
             <button
@@ -685,10 +691,9 @@ const TeacherAttendanceView = () => {
                   className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white"
                 >
                   <option value="">All Status</option>
-                  <option value="present">Present</option>
-                  <option value="absent">Absent</option>
-                  <option value="late">Late</option>
-                  <option value="excused">Excused</option>
+                  <option value="PRESENT">Present</option>
+                  <option value="ABSENT">Absent</option>
+                  <option value="LATE">Late</option>
                 </select>
               </div>
               
@@ -778,7 +783,7 @@ const TeacherAttendanceView = () => {
             <>
               {paginatedRecords.map((record, index) => (
                 <AttendanceRecordRow
-                  key={record.id}
+                  key={record.id || index}
                   record={record}
                   index={index}
                   onViewDetails={handleViewDetails}
@@ -788,11 +793,15 @@ const TeacherAttendanceView = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-6">
               {paginatedRecords.map((record, index) => {
-                const statusInfo = ATTENDANCE_STATUS[record.status] || ATTENDANCE_STATUS.present;
+                const statusKey = record.status || 'PRESENT';
+                const statusInfo = ATTENDANCE_STATUS[statusKey] || ATTENDANCE_STATUS.PRESENT;
                 const StatusIcon = statusInfo.icon;
+                const firstName = record.student?.user?.firstName || record.student?.firstName || record.user?.firstName || '';
+                const lastName = record.student?.user?.lastName || record.student?.lastName || record.user?.lastName || '';
+                
                 return (
                   <motion.div
-                    key={record.id}
+                    key={record.id || index}
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: index * 0.05 }}
@@ -803,14 +812,14 @@ const TeacherAttendanceView = () => {
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold">
-                          {record.student?.firstName?.[0] || 'S'}
+                          {firstName?.[0] || lastName?.[0] || 'S'}
                         </div>
                         <div>
                           <p className="font-semibold text-slate-800">
-                            {record.student?.firstName} {record.student?.lastName}
+                            {firstName} {lastName}
                           </p>
                           <p className="text-xs text-slate-400 font-mono">
-                            {record.student?.studentId || record.studentId}
+                            {record.student?.studentId || record.studentId || 'N/A'}
                           </p>
                         </div>
                       </div>
@@ -838,10 +847,10 @@ const TeacherAttendanceView = () => {
           
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50">
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <span className="text-sm text-slate-500">
-                  Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, filteredRecords.length)} of {filteredRecords.length}
+                  Showing {filteredRecords.length > 0 ? ((currentPage - 1) * itemsPerPage) + 1 : 0} to {Math.min(currentPage * itemsPerPage, filteredRecords.length)} of {filteredRecords.length}
                 </span>
                 <select
                   value={itemsPerPage}

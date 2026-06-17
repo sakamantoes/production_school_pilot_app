@@ -1,6 +1,8 @@
 // pages/teacher/TeacherAttendance.jsx
 // ─── Complete Teacher Attendance Management System ───────────────────────────
 // Features: Take attendance for class, update existing records, view attendance history
+// Uses teacherApi from services/teacherApi.js
+// FIXED: Backend expects uppercase status values: PRESENT, ABSENT, LATE
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -42,12 +44,40 @@ const formatShortDate = (dateString) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
+// ─── FIX: Backend expects UPPERCASE status values ──────────
+// Backend enum: PRESENT, ABSENT, LATE
 const ATTENDANCE_STATUS = {
-  present: { value: 'present', label: 'Present', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200', icon: CheckCircle, gradient: 'from-emerald-500 to-teal-500' },
-  absent: { value: 'absent', label: 'Absent', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200', icon: XCircle, gradient: 'from-red-500 to-rose-500' },
-  late: { value: 'late', label: 'Late', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-200', icon: ClockIcon, gradient: 'from-amber-500 to-orange-500' },
-  excused: { value: 'excused', label: 'Excused', color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-200', icon: AlertCircle, gradient: 'from-indigo-500 to-purple-500' },
+  PRESENT: { 
+    value: 'PRESENT', 
+    label: 'Present', 
+    color: 'text-emerald-600', 
+    bg: 'bg-emerald-50', 
+    border: 'border-emerald-200', 
+    icon: CheckCircle, 
+    gradient: 'from-emerald-500 to-teal-500' 
+  },
+  ABSENT: { 
+    value: 'ABSENT', 
+    label: 'Absent', 
+    color: 'text-red-600', 
+    bg: 'bg-red-50', 
+    border: 'border-red-200', 
+    icon: XCircle, 
+    gradient: 'from-red-500 to-rose-500' 
+  },
+  LATE: { 
+    value: 'LATE', 
+    label: 'Late', 
+    color: 'text-amber-600', 
+    bg: 'bg-amber-50', 
+    border: 'border-amber-200', 
+    icon: ClockIcon, 
+    gradient: 'from-amber-500 to-orange-500' 
+  },
 };
+
+// Map for display order
+const STATUS_ORDER = ['PRESENT', 'ABSENT', 'LATE'];
 
 // ─────────────────────────────────────────────────────────────
 // STATS CARD COMPONENT
@@ -99,26 +129,27 @@ const StudentAttendanceRow = ({ student, status, onStatusChange, remarks, onRema
         <div className="flex items-center gap-3">
           <div className="relative">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white text-sm font-bold shadow-md">
-              {student.firstName?.[0]}{student.lastName?.[0]}
+              {student.user?.firstName?.[0] || student.firstName?.[0] || 'S'}{student.user?.lastName?.[0] || student.lastName?.[0] || 'T'}
             </div>
             <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${
-              status === 'present' ? 'bg-emerald-500' :
-              status === 'late' ? 'bg-amber-500' :
-              status === 'excused' ? 'bg-indigo-500' : 'bg-red-500'
+              status === 'PRESENT' ? 'bg-emerald-500' :
+              status === 'LATE' ? 'bg-amber-500' :
+              status === 'ABSENT' ? 'bg-red-500' : 'bg-slate-400'
             }`} />
           </div>
           <div>
             <p className="font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors">
-              {student.firstName} {student.lastName}
+              {student.user?.firstName || student.firstName} {student.user?.lastName || student.lastName}
             </p>
-            <p className="text-xs text-slate-400 font-mono">ID: {student.studentId || student.id?.slice(-6)}</p>
+            <p className="text-xs text-slate-400 font-mono">ID: {student.studentId || student.id?.slice(-6) || 'N/A'}</p>
           </div>
         </div>
       </div>
       
       {/* Status Selector */}
       <div className="flex items-center gap-2">
-        {Object.values(ATTENDANCE_STATUS).map((statusOption) => {
+        {STATUS_ORDER.map((statusKey) => {
+          const statusOption = ATTENDANCE_STATUS[statusKey];
           const Icon = statusOption.icon;
           const isSelected = status === statusOption.value;
           return (
@@ -129,7 +160,7 @@ const StudentAttendanceRow = ({ student, status, onStatusChange, remarks, onRema
               disabled={isSubmitting}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 ${
                 isSelected
-                  ? `${statusOption.bg} ${statusOption.color} ring-2 ring-offset-2 ring-${statusOption.value === 'present' ? 'emerald' : statusOption.value === 'absent' ? 'red' : statusOption.value === 'late' ? 'amber' : 'indigo'}-400`
+                  ? `${statusOption.bg} ${statusOption.color} ring-2 ring-offset-2 ring-${statusOption.value === 'PRESENT' ? 'emerald' : statusOption.value === 'ABSENT' ? 'red' : 'amber'}-400`
                   : 'bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-indigo-600'
               } disabled:opacity-50`}
             >
@@ -208,42 +239,49 @@ const TeacherAttendance = () => {
   
   // Modal states
   const [editingRecord, setEditingRecord] = useState(null);
-  
+
   // ── Fetch Assigned Classes ─────────────────────────────
   const fetchAssignedClasses = useCallback(async () => {
     setLoading(true);
     try {
       const response = await teacherApi.getAssignedClasses();
-      const data = response?.data?.data || response?.data || response;
       
-      const classesWithArms = [];
-      if (Array.isArray(data)) {
-        for (const item of data) {
+      // Response: { data: [ { class: {...}, arm: {...}, subjects: [...] } ] }
+      const rawData = response?.data?.data || response?.data || response;
+      let classesData = [];
+      
+      if (Array.isArray(rawData)) {
+        classesData = rawData.map(item => {
           const classArm = {
-            id: item.arm?.id || item.classArmId || item.id,
+            id: item.arm?.id || item.armId || item.id,
             name: `${item.class?.name || 'Class'} - ${item.arm?.name || 'Arm'}`,
-            classId: item.class?.id,
-            armId: item.arm?.id,
+            classId: item.class?.id || item.classId,
+            className: item.class?.name || 'Class',
+            armId: item.arm?.id || item.armId,
+            armName: item.arm?.name || 'Arm',
             subjects: item.subjects || [],
-            students: [],
+            _raw: item,
           };
-          classesWithArms.push(classArm);
-        }
+          return classArm;
+        }).filter(item => item.id);
       }
-      setAssignedClasses(classesWithArms);
       
-      if (classesWithArms.length === 0) {
+      setAssignedClasses(classesData);
+      
+      if (classesData.length === 0) {
         toast.error('No classes assigned to you');
+      } else {
+        toast.success(`Loaded ${classesData.length} class${classesData.length > 1 ? 'es' : ''}`);
       }
     } catch (error) {
       console.error('Fetch error:', error);
-      toast.error('Failed to load assigned classes');
+      toast.error(error?.response?.data?.message || 'Failed to load assigned classes');
     } finally {
       setLoading(false);
     }
   }, []);
-  
-  // ── Fetch Students for selected class-arm ──────────────────────────
+
+  // ── Fetch Students ──────────────────────────────────────
   const fetchStudentsForClass = useCallback(async () => {
     if (!selectedClassArmId) {
       setStudents([]);
@@ -252,37 +290,30 @@ const TeacherAttendance = () => {
     
     setFetchingStudents(true);
     try {
-      const selectedClass = assignedClasses.find(c => c.id === selectedClassArmId);
+      const response = await teacherApi.getStudents();
+      const allStudents = toArray(response, 'students', 'data');
       
-      if (!selectedClass) {
-        setStudents([]);
-        return;
-      }
+      let filteredStudents = allStudents;
       
-      let fetchedStudents = [];
-      
-      try {
-        const response = await teacherApi.getStudentsByClassArm?.(selectedClassArmId);
-        fetchedStudents = response?.data?.data || response?.data || [];
-      } catch (err) {
-        console.warn('Could not fetch students via class arm endpoint:', err);
-        
-        try {
-          const response = await teacherApi.getStudentsByClass?.(selectedClass.classId);
-          fetchedStudents = response?.data?.data || response?.data || [];
-        } catch (err2) {
-          console.warn('Could not fetch students via class endpoint:', err2);
+      if (filteredStudents.length > 0) {
+        const sample = filteredStudents[0];
+        if (sample.classArmId) {
+          filteredStudents = filteredStudents.filter(s => s.classArmId === selectedClassArmId);
+        } else if (sample.armId) {
+          filteredStudents = filteredStudents.filter(s => s.armId === selectedClassArmId);
+        } else if (sample.classArm?.id) {
+          filteredStudents = filteredStudents.filter(s => s.classArm?.id === selectedClassArmId);
         }
       }
       
-      if (fetchedStudents.length === 0) {
+      if (filteredStudents.length === 0) {
         toast('No students found for this class. Please ensure students are enrolled.', {
           icon: 'ℹ️',
           duration: 4000,
         });
       }
       
-      setStudents(fetchedStudents);
+      setStudents(filteredStudents);
       setAttendanceRecords({});
     } catch (error) {
       console.error('Error fetching students:', error);
@@ -291,8 +322,8 @@ const TeacherAttendance = () => {
     } finally {
       setFetchingStudents(false);
     }
-  }, [selectedClassArmId, assignedClasses]);
-  
+  }, [selectedClassArmId]);
+
   useEffect(() => {
     fetchAssignedClasses();
   }, [fetchAssignedClasses]);
@@ -302,8 +333,8 @@ const TeacherAttendance = () => {
       fetchStudentsForClass();
     }
   }, [selectedClassArmId, fetchStudentsForClass]);
-  
-  // ── Check Existing Attendance ────────────
+
+  // ── Check Existing Attendance ──────────────────────────
   const checkExistingAttendance = useCallback(async () => {
     if (!selectedClassArmId || !selectedDate || students.length === 0) return;
     
@@ -313,7 +344,7 @@ const TeacherAttendance = () => {
         date: selectedDate,
       });
       
-      const records = response?.data?.data || response?.data || [];
+      const records = toArray(response, 'records', 'data');
       const recordsMap = {};
       (Array.isArray(records) ? records : []).forEach(record => {
         recordsMap[record.studentId] = record;
@@ -321,16 +352,17 @@ const TeacherAttendance = () => {
       
       const newRecords = {};
       students.forEach(student => {
-        const existing = recordsMap[student.id];
+        const studentId = student.id || student.studentId;
+        const existing = recordsMap[studentId];
         if (existing) {
-          newRecords[student.id] = {
-            status: existing.status,
+          newRecords[studentId] = {
+            status: existing.status || 'PRESENT',
             remarks: existing.remarks || '',
             id: existing.id,
           };
         } else {
-          newRecords[student.id] = {
-            status: 'present',
+          newRecords[studentId] = {
+            status: 'PRESENT',
             remarks: '',
             id: null,
           };
@@ -341,8 +373,9 @@ const TeacherAttendance = () => {
       console.error('Error checking attendance:', error);
       const newRecords = {};
       students.forEach(student => {
-        newRecords[student.id] = {
-          status: 'present',
+        const studentId = student.id || student.studentId;
+        newRecords[studentId] = {
+          status: 'PRESENT',
           remarks: '',
           id: null,
         };
@@ -356,12 +389,14 @@ const TeacherAttendance = () => {
       checkExistingAttendance();
     }
   }, [students, selectedClassArmId, selectedDate, checkExistingAttendance]);
-  
-  // ── Handlers ──────────────────────────────
+
+  // ── Handlers ──────────────────────────────────────────────
   const handleClassSelection = (classArmId) => {
     setSelectedClassArmId(classArmId);
     const selected = assignedClasses.find(c => c.id === classArmId);
     setSelectedClassArmName(selected?.name || '');
+    setStudents([]);
+    setAttendanceRecords({});
   };
   
   const handleStatusChange = (studentId, status) => {
@@ -401,19 +436,26 @@ const TeacherAttendance = () => {
     
     try {
       for (const student of students) {
-        const record = attendanceRecords[student.id];
+        const studentId = student.id || student.studentId;
+        const record = attendanceRecords[studentId];
         if (!record) continue;
         
         try {
+          // ─── FIX: Send uppercase status ──────────
+          const payload = {
+            status: record.status, // Already uppercase: PRESENT, ABSENT, LATE
+            remarks: record.remarks || undefined,
+          };
+          
           if (record.id) {
-            await teacherApi.updateAttendance(record.id, {
-              status: record.status,
-              remarks: record.remarks || undefined,
-            });
+            // Update existing record
+            await teacherApi.updateAttendance(record.id, payload);
             successCount++;
           } else {
+            // Create new record
             await teacherApi.recordAttendance({
-              studentId: student.id,
+              classArmId: selectedClassArmId,
+              studentId: studentId,
               date: selectedDate,
               status: record.status,
               remarks: record.remarks || undefined,
@@ -449,7 +491,7 @@ const TeacherAttendance = () => {
     
     try {
       const response = await teacherApi.viewAttendance({ studentId: student.id });
-      const history = response?.data?.data || response?.data || [];
+      const history = toArray(response, 'records', 'data');
       setAttendanceHistory(Array.isArray(history) ? history.sort((a, b) => new Date(b.date) - new Date(a.date)) : []);
     } catch (error) {
       console.error('Error fetching history:', error);
@@ -475,7 +517,7 @@ const TeacherAttendance = () => {
       setEditingRecord(null);
       await checkExistingAttendance();
     } catch (error) {
-      toast.error('Failed to update record');
+      toast.error(error?.response?.data?.message || 'Failed to update record');
     } finally {
       setSubmitting(false);
     }
@@ -494,13 +536,12 @@ const TeacherAttendance = () => {
   
   const getAttendanceSummary = () => {
     const records = Object.values(attendanceRecords);
-    const present = records.filter(r => r?.status === 'present').length;
-    const absent = records.filter(r => r?.status === 'absent').length;
-    const late = records.filter(r => r?.status === 'late').length;
-    const excused = records.filter(r => r?.status === 'excused').length;
+    const present = records.filter(r => r?.status === 'PRESENT').length;
+    const absent = records.filter(r => r?.status === 'ABSENT').length;
+    const late = records.filter(r => r?.status === 'LATE').length;
     const attendanceRate = records.length > 0 ? ((present + late) / records.length * 100).toFixed(1) : 0;
     
-    return { present, absent, late, excused, total: records.length, attendanceRate };
+    return { present, absent, late, total: records.length, attendanceRate };
   };
   
   const summary = getAttendanceSummary();
@@ -524,7 +565,7 @@ const TeacherAttendance = () => {
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
-      {/* Header with Indigo Theme */}
+      {/* Header */}
       <div className="bg-gradient-to-r from-indigo-700 via-indigo-600 to-indigo-700 border-b border-indigo-500/20 sticky top-0 z-20 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 py-5">
           <div className="flex items-center justify-between flex-wrap gap-4">
@@ -555,7 +596,7 @@ const TeacherAttendance = () => {
       
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Stats Dashboard */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
           <StatsCard
             title="Total Students"
             value={summary.total}
@@ -585,13 +626,6 @@ const TeacherAttendance = () => {
             icon={ClockIcon}
             color="text-amber-600"
             bgColor="bg-amber-50"
-          />
-          <StatsCard
-            title="Excused"
-            value={summary.excused}
-            icon={AlertCircle}
-            color="text-indigo-600"
-            bgColor="bg-indigo-50"
           />
           <StatsCard
             title="Attendance Rate"
@@ -627,7 +661,10 @@ const TeacherAttendance = () => {
                   >
                     <option value="">Select a class...</option>
                     {assignedClasses.map((cls) => (
-                      <option key={cls.id} value={cls.id}>{cls.name}</option>
+                      <option key={cls.id} value={cls.id}>
+                        {cls.className} - {cls.armName} 
+                        {cls.subjects?.length > 0 && ` (${cls.subjects.length} subjects)`}
+                      </option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -636,6 +673,12 @@ const TeacherAttendance = () => {
                   <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" />
                     No classes assigned yet
+                  </p>
+                )}
+                {selectedClassArmId && (
+                  <p className="text-xs text-indigo-600 mt-2 flex items-center gap-1">
+                    <BookOpen className="w-3 h-3" />
+                    {assignedClasses.find(c => c.id === selectedClassArmId)?.subjects?.length || 0} subjects assigned
                   </p>
                 )}
               </div>
@@ -654,13 +697,14 @@ const TeacherAttendance = () => {
                     className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
                   />
                 </div>
+                <p className="text-xs text-slate-400 mt-2">Today: {formatDisplayDate(new Date())}</p>
               </div>
             </div>
           </div>
         </div>
         
         {/* Students List - Take Attendance */}
-        {selectedClassArmId && (
+        {selectedClassArmId ? (
           <>
             {fetchingStudents ? (
               <div className="flex items-center justify-center py-20 bg-white rounded-2xl border border-slate-100 shadow-sm">
@@ -703,41 +747,42 @@ const TeacherAttendance = () => {
                 </div>
                 
                 <div className="divide-y divide-slate-100 max-h-[60vh] overflow-y-auto">
-                  {students.map((student, index) => (
-                    <div key={student.id} className="p-4 hover:bg-slate-50/50 transition-colors">
-                      <div className="flex items-center justify-between flex-wrap gap-3">
-                        <div className="flex-1">
-                          <StudentAttendanceRow
-                            student={student}
-                            index={index}
-                            status={attendanceRecords[student.id]?.status || 'present'}
-                            onStatusChange={(status) => handleStatusChange(student.id, status)}
-                            remarks={attendanceRecords[student.id]?.remarks || ''}
-                            onRemarksChange={(remarks) => handleRemarksChange(student.id, remarks)}
-                            isSubmitting={submitting}
-                          />
+                  {students.map((student, index) => {
+                    const studentId = student.id || student.studentId;
+                    return (
+                      <div key={studentId || index} className="p-4 hover:bg-slate-50/50 transition-colors">
+                        <div className="flex items-center justify-between flex-wrap gap-3">
+                          <div className="flex-1">
+                            <StudentAttendanceRow
+                              student={student}
+                              index={index}
+                              status={attendanceRecords[studentId]?.status || 'PRESENT'}
+                              onStatusChange={(status) => handleStatusChange(studentId, status)}
+                              remarks={attendanceRecords[studentId]?.remarks || ''}
+                              onRemarksChange={(remarks) => handleRemarksChange(studentId, remarks)}
+                              isSubmitting={submitting}
+                            />
+                          </div>
+                          
+                          {/* History Button */}
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => viewStudentHistory(student)}
+                            className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+                            title="View attendance history"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </motion.button>
                         </div>
-                        
-                        {/* History Button */}
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => viewStudentHistory(student)}
-                          className="p-2 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
-                          title="View attendance history"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </motion.button>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
           </>
-        )}
-        
-        {!selectedClassArmId && (
+        ) : (
           <div className="text-center py-20 bg-white rounded-2xl border border-slate-100 shadow-sm">
             <div className="w-24 h-24 rounded-full bg-indigo-50 flex items-center justify-center mx-auto mb-4">
               <Calendar className="w-12 h-12 text-indigo-300" />
@@ -772,7 +817,7 @@ const TeacherAttendance = () => {
                     Attendance History
                   </h2>
                   <p className="text-sm text-indigo-200">
-                    {selectedStudent.firstName} {selectedStudent.lastName}
+                    {selectedStudent.user?.firstName || selectedStudent.firstName} {selectedStudent.user?.lastName || selectedStudent.lastName}
                   </p>
                 </div>
                 <button
@@ -793,11 +838,11 @@ const TeacherAttendance = () => {
                 ) : (
                   <div className="space-y-3">
                     {attendanceHistory.map((record, idx) => {
-                      const statusInfo = ATTENDANCE_STATUS[record.status] || ATTENDANCE_STATUS.present;
+                      const statusInfo = ATTENDANCE_STATUS[record.status] || ATTENDANCE_STATUS.PRESENT;
                       const StatusIcon = statusInfo.icon;
                       return (
                         <motion.div
-                          key={record.id}
+                          key={record.id || idx}
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: idx * 0.05 }}
@@ -865,8 +910,9 @@ const TeacherAttendance = () => {
               <div className="p-6 space-y-5">
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.values(ATTENDANCE_STATUS).map((statusOption) => {
+                  <div className="grid grid-cols-3 gap-2">
+                    {STATUS_ORDER.map((statusKey) => {
+                      const statusOption = ATTENDANCE_STATUS[statusKey];
                       const Icon = statusOption.icon;
                       const isSelected = editingRecord.status === statusOption.value;
                       return (
@@ -875,12 +921,12 @@ const TeacherAttendance = () => {
                           onClick={() => setEditingRecord({ ...editingRecord, status: statusOption.value })}
                           className={`px-3 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                             isSelected
-                              ? `${statusOption.bg} ${statusOption.color} ring-2 ring-offset-2 ring-${statusOption.value === 'present' ? 'emerald' : statusOption.value === 'absent' ? 'red' : statusOption.value === 'late' ? 'amber' : 'indigo'}-400`
+                              ? `${statusOption.bg} ${statusOption.color} ring-2 ring-offset-2 ring-${statusOption.value === 'PRESENT' ? 'emerald' : statusOption.value === 'ABSENT' ? 'red' : 'amber'}-400`
                               : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
                           }`}
                         >
                           <Icon className="w-4 h-4" />
-                          {statusOption.label}
+                          <span className="hidden sm:inline">{statusOption.label}</span>
                         </button>
                       );
                     })}
