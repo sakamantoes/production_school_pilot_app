@@ -1,4 +1,4 @@
-// pages/student/StudentAnnouncement.jsx
+// pages/student/StudentAnnouncements.jsx
 // ─── Student Announcements with API integration ───────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -18,7 +18,7 @@ const formatDate = (dateString) => {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 };
 
-const StudentAnnouncement = () => {
+const StudentAnnouncements = () => {
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -170,4 +170,4 @@ const StudentAnnouncement = () => {
   );
 };
 
-export default StudentAnnouncement;
+export default StudentAnnouncements;
