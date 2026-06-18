@@ -25,7 +25,7 @@ import {
   Hash,
   FileText
 } from 'lucide-react';
-import teacherApi from '../../services/teacherApi';
+import teacherApi from '../../services/TeacherApi';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const getDayName = (index) => {

@@ -15,7 +15,7 @@ import {
   Download, Printer, FileText, Activity, TrendingUp, TrendingDown,
   Award, Sparkles, Shield, Zap, Star, BarChart3
 } from 'lucide-react';
-import { teacherApi } from '../../services/teacherApi';
+import { teacherApi } from '../../services/TeacherApi';
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS

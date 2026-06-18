@@ -17,7 +17,7 @@ import {
   User, MessageSquare, FileText, AlertCircle, ZoomIn,
   Grid3x3, List, Maximize2, Minimize2, Sparkles, Crown, X
 } from 'lucide-react';
-import { teacherApi } from '../../services/teacherApi';
+import { teacherApi } from '../../services/TeacherApi';
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS

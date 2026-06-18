@@ -13,7 +13,7 @@ import {
   AlertTriangle, RotateCcw, Eye, Minus, Plus, UserPlus,
   UserCheck, Sparkles, Crown, Star
 } from 'lucide-react';
-import { teacherApi } from '../../services/teacherApi';
+import { teacherApi } from '../../services/TeacherApi';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const toArray = (res, ...keys) => {

@@ -34,7 +34,7 @@ import {
   GraduationCap,
   Heart
 } from 'lucide-react';
-import teacherApi from '../../services/teacherApi';
+import teacherApi from '../../services/TeacherApi';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const formatDate = (dateString) => {

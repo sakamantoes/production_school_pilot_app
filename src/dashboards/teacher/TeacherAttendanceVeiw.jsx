@@ -15,7 +15,7 @@ import {
   PieChart, Calendar as CalendarIcon, ChevronDown, Sliders,
   Grid3x3, List, Maximize2, Minimize2, Star, Award
 } from 'lucide-react';
-import { teacherApi } from '../../services/teacherApi';
+import { teacherApi } from '../../services/TeacherApi';
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
