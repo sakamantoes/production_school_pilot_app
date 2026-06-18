@@ -17,7 +17,7 @@ import {
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import { notificationAPI } from '../services/schoolApi';
-import { teacherApi } from '../services/teacherApi';
+import { teacherApi } from '../services/TeacherApi';
 import {studentApi} from '../services/studentApi';
 
 // Helper to extract array from response
