@@ -1,6 +1,6 @@
 // pages/teacher/TeacherResultUpload.jsx
 // ─── Production-ready Result Upload — matches school admin design system ──────
-// FIXED: Added enrollmentId and termId to the result payload
+// FIXED: Properly handles enrollmentId and termId for result creation
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -50,7 +50,7 @@ const STATUS_META = {
 
 const PALETTE = ['#3b82f6','#6366f1','#8b5cf6','#ec4899','#10b981','#f59e0b'];
 
-// ─── Helper functions to handle nested user object ──────────────────────────
+// ─── Helper functions to handle nested user object ────────────────────
 const getFirstName = (s) => s?.user?.firstName || s?.firstName || '';
 const getLastName = (s) => s?.user?.lastName || s?.lastName || '';
 const getFullName = (s) => {
@@ -206,9 +206,32 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
 
     setSubmitting(true);
     try {
-      // ─── FIXED: Get the selected student to extract enrollment info ──────
-      const student = students.find(s => s.id === selectedStudent);
+      // ─── FIXED: Get the student's enrollment from the API ───
+      const selectedStudentObj = students.find(s => s.id === selectedStudent);
       
+      // Fetch enrollment details for this student
+      let enrollmentId = null;
+      let termId = null;
+      let sessionId = null;
+      
+      try {
+        // Get student details with enrollments
+        const studentResponse = await teacherApi.getStudents();
+        const allStudents = toArray(studentResponse, 'students', 'data');
+        const studentWithEnrollments = allStudents.find(s => s.id === selectedStudent);
+        
+        // Get the active enrollment
+        if (studentWithEnrollments?.enrollments && studentWithEnrollments.enrollments.length > 0) {
+          const activeEnrollment = studentWithEnrollments.enrollments.find(e => e.status === 'ACTIVE') || studentWithEnrollments.enrollments[0];
+          enrollmentId = activeEnrollment.id;
+          termId = activeEnrollment.termId;
+          sessionId = activeEnrollment.sessionId;
+        }
+      } catch (err) {
+        console.warn('Could not fetch enrollment details:', err);
+      }
+
+      // ─── FIXED: Build result data with required fields ───
       const resultData = {
         studentId: selectedStudent,
         subjectId: subjectId,
@@ -216,11 +239,23 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
         armId: armId,
         caScore: Number(caScore),
         examScore: Number(examScore),
-        // ─── FIXED: Add enrollmentId and termId from student data ──────────
-        enrollmentId: student?.enrollmentId || student?.enrollment?.id,
-        termId: student?.termId || student?.enrollment?.termId,
       };
-      
+
+      // Add enrollmentId if available
+      if (enrollmentId) {
+        resultData.enrollmentId = enrollmentId;
+      }
+
+      // Add termId if available
+      if (termId) {
+        resultData.termId = termId;
+      }
+
+      // Add sessionId if available
+      if (sessionId) {
+        resultData.sessionId = sessionId;
+      }
+
       const response = await teacherApi.uploadResult(resultData);
       const savedResult = extract(response);
       
@@ -290,13 +325,6 @@ const CreateResultModal = ({ isOpen, onClose, students, subjectId, classId, armI
                   ))}
                 </NSelect>
               </NField>
-
-              {selectedStudentObj && !selectedStudentObj.enrollmentId && !selectedStudentObj.enrollment?.id && (
-                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700">This student doesn't have an active enrollment. Please ensure they are enrolled.</p>
-                </div>
-              )}
 
               {existingResult && (
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-start gap-2">
@@ -526,6 +554,7 @@ const TeacherResultUpload = () => {
   const [subjects, setSubjects] = useState([]);
   const [students, setStudents] = useState([]);
   const [results, setResults] = useState({});
+  const [studentEnrollments, setStudentEnrollments] = useState({});
 
   const [loading, setLoading] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
@@ -588,6 +617,7 @@ const TeacherResultUpload = () => {
     return subjects.filter(s => s.classId === classId);
   }, [classes, subjects, selClass]);
 
+  // ─── FIXED: Fetch students and their enrollments ───────────────────────────
   useEffect(() => {
     if (!selClass || !selSubject) {
       setStudents([]);
@@ -598,26 +628,71 @@ const TeacherResultUpload = () => {
     const loadData = async () => {
       setLoadingData(true);
       try {
+        // Get all students assigned to the teacher
         const response = await teacherApi.getStudents();
         const allStudents = toArray(response, 'students', 'data');
         
-        // ─── FIXED: Map students with enrollment data ──────────────────────
-        const mappedStudents = allStudents.map(student => ({
-          id: student.id,
-          studentId: student.studentId,
-          userId: student.userId,
-          firstName: student.user?.firstName || '',
-          lastName: student.user?.lastName || '',
-          user: student.user,
-          // ─── FIXED: Preserve enrollment data ─────────────────────────────
-          enrollmentId: student.enrollmentId || student.enrollment?.id,
-          enrollment: student.enrollment,
-          termId: student.termId || student.enrollment?.termId,
-          sessionId: student.sessionId || student.enrollment?.sessionId,
-          _count: student._count,
-          ...student,
-        }));
+        // Map students and fetch enrollment details
+        const mappedStudents = [];
+        const enrollmentsMap = {};
         
+        for (const student of allStudents) {
+          // Try to get enrollment details for this student
+          let enrollmentId = null;
+          let termId = null;
+          let sessionId = null;
+          
+          try {
+            // Check if student has enrollments in the response
+            if (student.enrollments && student.enrollments.length > 0) {
+              const activeEnrollment = student.enrollments.find(e => e.status === 'ACTIVE') || student.enrollments[0];
+              enrollmentId = activeEnrollment.id;
+              termId = activeEnrollment.termId;
+              sessionId = activeEnrollment.sessionId;
+            } else {
+              // Try to fetch enrollment details from the result status endpoint
+              const classObj = classes.find(c => c.id === selClass);
+              const statusRes = await teacherApi.getResultApprovalStatus({
+                classId: classObj?.class?.id,
+                subjectId: selSubject,
+              });
+              const statusData = toArray(statusRes, 'results', 'data');
+              const studentResult = statusData.find(r => r.studentId === student.id);
+              if (studentResult) {
+                enrollmentId = studentResult.enrollmentId;
+                termId = studentResult.termId;
+                sessionId = studentResult.sessionId;
+              }
+            }
+          } catch (err) {
+            console.warn(`Could not fetch enrollment for student ${student.id}:`, err);
+          }
+          
+          // Store enrollment info
+          if (enrollmentId) {
+            enrollmentsMap[student.id] = {
+              enrollmentId,
+              termId,
+              sessionId,
+            };
+          }
+          
+          mappedStudents.push({
+            id: student.id,
+            studentId: student.studentId,
+            userId: student.userId,
+            firstName: student.user?.firstName || '',
+            lastName: student.user?.lastName || '',
+            user: student.user,
+            _count: student._count,
+            enrollmentId: enrollmentId,
+            termId: termId,
+            sessionId: sessionId,
+            ...student,
+          });
+        }
+        
+        setStudentEnrollments(enrollmentsMap);
         setStudents(mappedStudents);
         setResults({});
         
@@ -636,6 +711,7 @@ const TeacherResultUpload = () => {
           });
           setResults(resultsMap);
           
+          // Update students with existing result info
           const updatedStudents = mappedStudents.map(s => ({
             ...s,
             existingResult: resultsMap[s.id] || null,
@@ -662,13 +738,12 @@ const TeacherResultUpload = () => {
     try {
       const existing = results[studentId];
       const classObj = classes.find(c => c.id === selClass);
-      const student = students.find(s => s.id === studentId);
       
-      // ─── FIXED: Build payload with enrollmentId and termId ───────────────
-      const basePayload = {
-        caScore: scoreData.caScore,
-        examScore: scoreData.examScore,
-      };
+      // ─── FIXED: Get enrollmentId from the stored enrollments ───
+      const enrollmentInfo = studentEnrollments[studentId] || {};
+      const enrollmentId = enrollmentInfo.enrollmentId;
+      const termId = enrollmentInfo.termId;
+      const sessionId = enrollmentInfo.sessionId;
       
       let res;
       if (!existing) {
@@ -680,17 +755,32 @@ const TeacherResultUpload = () => {
           armId: selClass,
           caScore: scoreData.caScore,
           examScore: scoreData.examScore,
-          // ─── FIXED: Add required fields ──────────────────────────────────
-          enrollmentId: student?.enrollmentId || student?.enrollment?.id,
-          termId: student?.termId || student?.enrollment?.termId,
         };
+        
+        // Add enrollmentId if available
+        if (enrollmentId) {
+          resultData.enrollmentId = enrollmentId;
+        }
+        if (termId) {
+          resultData.termId = termId;
+        }
+        if (sessionId) {
+          resultData.sessionId = sessionId;
+        }
+        
         res = await teacherApi.uploadResult(resultData);
       } else if (existing.status === 'REJECTED') {
         // Resubmit rejected result
-        res = await teacherApi.resubmitRejectedResult(existing.id, basePayload);
+        res = await teacherApi.resubmitRejectedResult(existing.id, {
+          caScore: scoreData.caScore,
+          examScore: scoreData.examScore,
+        });
       } else {
         // Edit existing result
-        res = await teacherApi.editResult(existing.id, basePayload);
+        res = await teacherApi.editResult(existing.id, {
+          caScore: scoreData.caScore,
+          examScore: scoreData.examScore,
+        });
       }
 
       const saved = extract(res);
@@ -706,7 +796,7 @@ const TeacherResultUpload = () => {
     } finally {
       setSaving(false);
     }
-  }, [results, selClass, selSubject, classes, students]);
+  }, [results, selClass, selSubject, classes, studentEnrollments]);
 
   const handleCreateResult = useCallback((newResult, studentId) => {
     setResults(prev => ({ ...prev, [studentId]: newResult }));

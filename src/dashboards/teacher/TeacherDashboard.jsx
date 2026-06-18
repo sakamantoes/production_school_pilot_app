@@ -102,6 +102,7 @@ const TeacherDashboard = () => {
   const [announcements, setAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [analytics, setAnalytics] = useState(null);
+  const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -109,13 +110,14 @@ const TeacherDashboard = () => {
   const fetchAllData = useCallback(async (isRefresh = false) => {
     isRefresh ? setRefreshing(true) : setLoading(true);
     try {
-      const [profileRes, classesRes, subjectsRes, announcementsRes, notificationsRes, analyticsRes] = await Promise.allSettled([
+      const [profileRes, classesRes, subjectsRes, announcementsRes, notificationsRes, analyticsRes, studentsRes] = await Promise.allSettled([
         teacherApi.getProfile(),
         teacherApi.getAssignedClasses(),
         teacherApi.getAssignedSubjects(),
         teacherApi.getAnnouncements(),
         teacherApi.getNotifications(),
         teacherApi.getTeachingAnalytics({ period: 'year' }),
+        teacherApi.getStudents(),
       ]);
 
       setProfile(profileRes.status === 'fulfilled' ? profileRes.value?.data?.data || profileRes.value?.data || profileRes.value : null);
@@ -124,6 +126,7 @@ const TeacherDashboard = () => {
       setAnnouncements(toArray(announcementsRes.status === 'fulfilled' ? announcementsRes.value : null, 'announcements', 'data'));
       setNotifications(toArray(notificationsRes.status === 'fulfilled' ? notificationsRes.value : null, 'notifications', 'data'));
       setAnalytics(analyticsRes.status === 'fulfilled' ? analyticsRes.value?.data?.data || analyticsRes.value?.data || analyticsRes.value : null);
+      setStudents(toArray(studentsRes.status === 'fulfilled' ? studentsRes.value : null, 'students', 'data'));
 
       if (isRefresh) toast.success('Dashboard refreshed');
     } catch (error) {
@@ -153,6 +156,10 @@ const TeacherDashboard = () => {
 
   const totalClasses = assignedData.length;
   const totalSubjects = assignedData.reduce((sum, item) => sum + (item.subjects?.length || 0), 0);
+  
+  // ─── FIX: Calculate total students from the students list ───
+  const totalStudents = students.length;
+  
   const stats = analytics?.stats || {};
   const greeting = getGreeting();
   const teacher = profile?.user || profile;
@@ -241,10 +248,10 @@ const TeacherDashboard = () => {
           />
           <StatCard
             title="Total Students"
-            value={stats.totalStudents || 0}
+            value={totalStudents}
             icon={GraduationCap}
             gradient="from-emerald-500 to-emerald-600"
-            trend="+12%"
+            trend={totalStudents > 0 ? "+12%" : undefined}
             loading={loading}
           />
           <StatCard
