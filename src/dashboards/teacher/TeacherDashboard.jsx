@@ -12,7 +12,7 @@ import {
   Sparkles, TrendingUp, Calendar, Clock, Award,
   Target, CheckCircle, BarChart3, Star,
 } from 'lucide-react';
-import teacherApi from '../../services/TeacherApi';
+import teacherApi from '../../services/TeacherApi.js';
 import Loader from '../../components/Loader'
 
 // ─────────────────────────────────────────────────────────────
