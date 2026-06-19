@@ -1,8 +1,17 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { GraduationCap, Users, BarChart3, Calendar, ArrowRight, Sparkles, Shield, Zap } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import Image from '../../assets/image';
+import React from "react";
+import { motion } from "framer-motion";
+import {
+  GraduationCap,
+  Users,
+  BarChart3,
+  Calendar,
+  ArrowRight,
+  Sparkles,
+  Shield,
+  Zap,
+} from "lucide-react";
+import { Link } from "react-router-dom";
+import Image from "../../assets/image";
 
 const Landing = () => {
   // Animation variants
@@ -98,9 +107,9 @@ const Landing = () => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 1 }}
-          className="absolute inset-0 Base"
+        className="absolute inset-0 Base"
       />
-      
+
       {/* Animated Background Patterns */}
       <motion.div
         animate={{
@@ -191,50 +200,27 @@ const Landing = () => {
               className="text-base sm:text-[15px] text-white/90 mb-8 max-w-lg mx-auto lg:mx-0 leading-relaxed"
             >
               SchoolPilot is designed to help schools manage students, track
-              performance, monitor attendance, and streamline administrative work  
-              all from one powerful platform.
+              performance, monitor attendance, and streamline administrative
+              work all from one powerful platform.
             </motion.p>
-
-          
-
-<motion.p
-  initial={{ opacity: 0, y: 20 }}
-  animate={{ 
-    opacity: 1, 
-    y: 0,
-    scale: [1, 1.02, 1],
-  }}
-  transition={{ 
-    duration: 0.6, 
-    ease: [0.25, 0.1, 0.25, 1],
-    scale: {
-      duration: 2,
-      repeat: Infinity,
-      repeatType: "reverse",
-      ease: "easeInOut"
-    }
-  }}
-  className="text-white/90 mb-8 max-w-lg mx-auto lg:mx-0 text-lg font-semibold tracking-wide"
->
-  CLICK THE BUTTON BELOW TO REGISTER AND JOIN OUR WAITLIST
-</motion.p>
 
             {/* CTA Buttons */}
             <motion.div
               variants={itemVariants}
               className="flex sm:justify-start justify-center mb-12"
             >
-              <Link to='/register'> <motion.button
-                variants={buttonVariants}
-                whileHover="hover"
-                whileTap="tap"
-                className="group bg-white text-[#214f77] px-8 py-3 rounded-full font-bold text-lg shadow-2xl hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2"
-              >
-                Get Started
-                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-              </motion.button>
-</Link>
-             
+              <Link to="/register">
+                {" "}
+                <motion.button
+                  variants={buttonVariants}
+                  whileHover="hover"
+                  whileTap="tap"
+                  className="group bg-white text-[#214f77] px-8 py-3 rounded-full font-bold text-lg shadow-2xl hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-2"
+                >
+                  Get Started
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </motion.button>
+              </Link>
             </motion.div>
 
             {/* Stats Section */}
@@ -254,8 +240,12 @@ const Landing = () => {
                   className="text-center"
                 >
                   <stat.icon className="w-6 h-6 text-white/70 mx-auto mb-2" />
-                  <div className="text-2xl sm:text-3xl font-bold text-white">{stat.number}</div>
-                  <div className="text-xs sm:text-sm text-white/70">{stat.label}</div>
+                  <div className="text-2xl sm:text-3xl font-bold text-white">
+                    {stat.number}
+                  </div>
+                  <div className="text-xs sm:text-sm text-white/70">
+                    {stat.label}
+                  </div>
                 </motion.div>
               ))}
             </motion.div>
@@ -331,7 +321,9 @@ const Landing = () => {
               </div>
               <div>
                 <p className="text-xs text-gray-500">New enrollment</p>
-                <p className="text-sm font-semibold text-gray-800">+24 students joined today</p>
+                <p className="text-sm font-semibold text-gray-800">
+                  +24 students joined today
+                </p>
               </div>
               <motion.div
                 animate={{ scale: [1, 1.2, 1] }}
@@ -357,7 +349,11 @@ const Landing = () => {
           >
             <motion.div
               animate={{ y: [0, 15, 0] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              transition={{
+                duration: 1.5,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}
               className="w-1.5 h-1.5 bg-white/60 rounded-full mt-2"
             />
           </motion.div>
